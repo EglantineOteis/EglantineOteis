@@ -3,48 +3,48 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import re
+import html
 
 st.set_page_config(layout="wide")
 
 # ==============================
-# NORMALISATION ROBUSTE
+# NORMALISATION (ADAPTÉE PLANNER)
 # ==============================
 def normalize_columns(df):
 
+    original = df.columns.tolist()
     df.columns = df.columns.str.lower().str.strip()
 
-    cols = []
+    mapping = {}
 
     for c in df.columns:
 
-        if "tâche" in c:
-            cols.append("projet")  # ✅ seule vraie colonne projet
+        # 🎯 SEULE colonne projet valide
+        if "nom de tâche" in c:
+            mapping[c] = "projet"
 
-        elif "attrib" in c:
-            cols.append("responsable")
+        elif "attribué" in c:
+            mapping[c] = "responsable"
 
-        elif "progress" in c:
-            cols.append("progression")
+        elif "progression" in c:
+            mapping[c] = "progression"
 
         elif "description" in c:
-            cols.append("description_brut")
+            mapping[c] = "description_brut"
 
         elif "compartiment" in c:
-            cols.append("equipe")
+            mapping[c] = "equipe"
 
-        else:
-            cols.append(c)
+    df = df.rename(columns=mapping)
 
-    df.columns = cols
-
-    # 🔥 SUPPRESSION DES DOUBLONS
+    # 🔥 supprimer doublons
     df = df.loc[:, ~df.columns.duplicated()]
 
     return df
 
 
 # ==============================
-# AVANCEMENT INTELLIGENT
+# AVANCEMENT
 # ==============================
 def clean_progress(x):
 
@@ -55,43 +55,34 @@ def clean_progress(x):
 
     if "non" in x:
         return 0
-    if "cours" in x:
+    elif "cours" in x:
         return 50
-    if "term" in x:
+    elif "term" in x:
         return 100
 
-    try:
-        return float(x)
-    except:
-        return 0
+    return 0
 
 
 # ==============================
-# PARSE TEXTE PROPRE
+# PARSE DESCRIPTION PROPRE
 # ==============================
 def parse_description(txt):
 
     if not isinstance(txt, str):
         return "", ""
 
-    desc = ""
-    rem = ""
+    def extract(label):
+        match = re.search(rf"{label}\s*:\s*(.*?)(?=\n[A-Z]|$)", txt, re.IGNORECASE | re.DOTALL)
+        return match.group(1).strip() if match else ""
 
-    # extraction regex (beaucoup plus fiable)
-    d = re.search(r"descriptif\s*:\s*(.*)", txt, re.IGNORECASE)
-    r = re.search(r"remarque\s*:\s*(.*)", txt, re.IGNORECASE)
-
-    if d:
-        desc = d.group(1).strip()
-
-    if r:
-        rem = r.group(1).strip()
+    desc = extract("Descriptif")
+    rem = extract("Remarque")
 
     return desc, rem
 
 
 # ==============================
-# RESPONSABLE (CHEF DE PROJET)
+# RESPONSABLE
 # ==============================
 def clean_responsable(row):
 
@@ -105,7 +96,7 @@ def clean_responsable(row):
 
 
 # ==============================
-# TRANSFORMATION GLOBALE
+# TRANSFORMATION
 # ==============================
 def transform(df):
 
@@ -150,40 +141,35 @@ def transform(df):
 
 
 # ==============================
-# TABLE HTML PRO OUTLOOK
+# HTML OUTLOOK
 # ==============================
 def generate_html_table(df):
 
-    html = """
-    <table style="border-collapse:collapse;font-family:Calibri;width:100%">
-    <tr style="background:#0A2463;color:white">
-    <th style="padding:8px;border:1px solid #ddd">Projet</th>
-    <th style="padding:8px;border:1px solid #ddd">Responsable</th>
-    <th style="padding:8px;border:1px solid #ddd">Avancement</th>
-    <th style="padding:8px;border:1px solid #ddd">Statut</th>
-    <th style="padding:8px;border:1px solid #ddd">Description</th>
-    </tr>
-    """
+    html_table = "<table style='border-collapse:collapse;font-family:Calibri;width:100%'>"
 
-    for _, r in df.iterrows():
-        html += f"""
-        <tr>
-        <td style="padding:6px;border:1px solid #ddd">{r['projet']}</td>
-        <td style="padding:6px;border:1px solid #ddd">{r['responsable']}</td>
-        <td style="padding:6px;border:1px solid #ddd">{r['avancement']}%</td>
-        <td style="padding:6px;border:1px solid #ddd">{r['statut']}</td>
-        <td style="padding:6px;border:1px solid #ddd">{r['description']}</td>
-        </tr>
-        """
+    # header
+    html_table += "<tr style='background:#0A2463;color:white'>"
+    for col in df.columns:
+        html_table += f"<th style='border:1px solid #ddd;padding:8px'>{col}</th>"
+    html_table += "</tr>"
 
-    html += "</table>"
-    return html
+    # lignes
+    for _, row in df.iterrows():
+        html_table += "<tr>"
+        for val in row:
+            safe = html.escape(str(val)).replace("\n", "<br>")
+            html_table += f"<td style='border:1px solid #ddd;padding:6px'>{safe}</td>"
+        html_table += "</tr>"
+
+    html_table += "</table>"
+
+    return html_table
 
 
 # ==============================
 # UI
 # ==============================
-st.title("📊 Suivi des projets intelligent")
+st.title("📊 Suivi des projets")
 
 file = st.file_uploader("📂 Importer Excel", type=["xlsx"])
 
@@ -192,9 +178,8 @@ if file:
     df_raw = pd.read_excel(file)
     df = transform(df_raw)
 
-    # 🔴 sécurité
     if "projet" not in df.columns:
-        st.error("❌ Colonne projet introuvable")
+        st.error("❌ Colonne 'Nom de tâche' introuvable")
         st.stop()
 
     # ==============================
@@ -205,16 +190,16 @@ if file:
     responsables = ["Tous"] + sorted(df["responsable"].dropna().unique())
     projets = ["Tous"] + sorted(df["projet"].dropna().unique())
 
-    resp_filter = col1.selectbox("Filtrer par responsable", responsables)
-    proj_filter = col2.selectbox("Filtrer par projet", projets)
+    resp_filter = col1.selectbox("Responsable", responsables)
+    proj_filter = col2.selectbox("Projet", projets)
 
-    df_filtered = df.copy()
+    dff = df.copy()
 
     if resp_filter != "Tous":
-        df_filtered = df_filtered[df_filtered["responsable"] == resp_filter]
+        dff = dff[dff["responsable"] == resp_filter]
 
     if proj_filter != "Tous":
-        df_filtered = df_filtered[df_filtered["projet"] == proj_filter]
+        dff = dff[dff["projet"] == proj_filter]
 
     # ==============================
     # KPI
@@ -223,33 +208,36 @@ if file:
 
     c1, c2, c3 = st.columns(3)
 
-    c1.metric("Projets", len(df_filtered))
-
-    avg = df_filtered["avancement"].mean() if len(df_filtered) else 0
-    c2.metric("Avancement moyen", f"{avg:.0f}%")
-
-    c3.metric("En cours", len(df_filtered[df_filtered["statut"] == "En cours"]))
+    c1.metric("Projets", len(dff))
+    c2.metric("Avancement moyen", f"{dff['avancement'].mean():.0f}%")
+    c3.metric("En cours", len(dff[dff["statut"] == "En cours"]))
 
     # ==============================
     # GRAPHIQUES
     # ==============================
     st.subheader("📊 Graphiques")
 
-    st.plotly_chart(px.pie(df_filtered, names="statut"), use_container_width=True)
-    st.plotly_chart(px.bar(df_filtered, x="responsable", y="avancement"), use_container_width=True)
+    st.plotly_chart(px.pie(dff, names="statut"), use_container_width=True)
+
+    st.plotly_chart(
+        px.bar(dff.groupby("responsable")["projet"].count().reset_index(),
+               x="responsable", y="projet",
+               title="Charge par responsable"),
+        use_container_width=True
+    )
 
     # ==============================
-    # TABLEAU
+    # TABLEAU EXCEL
     # ==============================
     st.subheader("📋 Tableau structuré")
-    st.dataframe(df_filtered, use_container_width=True)
+    st.dataframe(dff, use_container_width=True)
 
     # ==============================
-    # TABLE MAIL
+    # TABLE OUTLOOK
     # ==============================
     st.subheader("📧 Tableau Outlook")
 
-    html_table = generate_html_table(df_filtered)
+    html_table = generate_html_table(dff)
 
     st.code(html_table, language="html")
     st.markdown("👉 Copier-coller dans Outlook")

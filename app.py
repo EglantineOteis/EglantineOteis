@@ -3,12 +3,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import urllib.parse
-import os
 
 st.set_page_config(layout="wide")
 
 # =========================
-# 🔍 DETECTION INTELLIGENTE (ANTI-CRASH)
+# 🔍 DETECTION ROBUSTE
 # =========================
 def smart_detect(df):
 
@@ -22,23 +21,23 @@ def smart_detect(df):
     for col in df.columns:
         c = col.lower()
 
-        if any(k in c for k in ["tâche", "tache", "nom"]):
+        if "tâche" in c or "tache" in c:
             mapping["projet"] = col
 
-        elif any(k in c for k in ["attribué", "responsable", "assign", "owner"]):
+        elif "attribué" in c:
             mapping["responsable"] = col
 
-        elif any(k in c for k in ["progress", "avancement", "%"]):
+        elif "progress" in c:
             mapping["avancement"] = col
 
-        elif any(k in c for k in ["description", "comment"]):
+        elif "description" in c:
             mapping["description"] = col
 
     return mapping
 
 
 # =========================
-# 🧠 PARSE TEXTE
+# 🧠 PARSE DESCRIPTION
 # =========================
 def parse_desc(txt):
 
@@ -60,19 +59,19 @@ def parse_desc(txt):
 
 
 # =========================
-# 📊 HTML TABLE PRO
+# 📊 TABLE HTML PRO
 # =========================
 def generate_html(df):
 
     html = "<table style='border-collapse:collapse;font-family:Calibri;width:100%'>"
 
-    # header
+    # HEADER
     html += "<tr style='background:#0A2463;color:white'>"
     for col in df.columns:
         html += f"<th style='padding:10px;border:1px solid #ddd'>{col}</th>"
     html += "</tr>"
 
-    # rows
+    # LIGNES
     for i, (_, row) in enumerate(df.iterrows()):
         bg = "#f4f6fa" if i % 2 else "white"
         html += f"<tr style='background:{bg}'>"
@@ -81,7 +80,7 @@ def generate_html(df):
             val = str(row[col]).replace("\n", "<br>")
 
             if col == "Avancement":
-                html += f"<td style='padding:8px;border:1px solid #ddd;color:#E85D04;font-weight:bold'>{val}%</td>"
+                html += f"<td style='padding:8px;border:1px solid #ddd;color:#E85D04;font-weight:bold;text-align:center'>{val}%</td>"
             else:
                 html += f"<td style='padding:8px;border:1px solid #ddd'>{val}</td>"
 
@@ -92,11 +91,13 @@ def generate_html(df):
 
 
 # =========================
-# 📧 MAIL OUTLOOK
+# 📧 OUTLOOK WEB
 # =========================
-def mail_link(df):
+def outlook_web_link(df):
 
     html_table = generate_html(df)
+
+    subject = "Suivi des projets"
 
     body = f"""
 Bonjour,
@@ -108,11 +109,11 @@ Voici le suivi des projets :
 Cordialement
 """
 
-    return f"mailto:?subject=Suivi projets&body={urllib.parse.quote(body)}"
+    return f"https://outlook.office.com/mail/deeplink/compose?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}"
 
 
 # =========================
-# 🤖 IA SIMPLIFIÉE (safe)
+# 🤖 IA SIMPLE
 # =========================
 def ai_summary(df):
 
@@ -137,7 +138,7 @@ Suivre les projets < 40%
 # =========================
 st.title("📊 Suivi des projets intelligent")
 
-file = st.file_uploader("Importer Excel", type=["xlsx"])
+file = st.file_uploader("📂 Importer Excel", type=["xlsx"])
 
 if file:
 
@@ -146,40 +147,66 @@ if file:
 
     st.write("Colonnes détectées :", df_raw.columns.tolist())
 
-    # 🔍 IA détection
     mapping = smart_detect(df_raw)
+    st.write("Mapping :", mapping)
 
-    st.write("Mapping IA :", mapping)
-
-    # 🚨 sécurité anti crash
-    if None in mapping.values():
-        st.error("❌ Impossible de détecter automatiquement les colonnes")
+    # 🚨 ANTI CRASH
+    if mapping["projet"] is None:
+        st.error("❌ Colonne 'Nom de tâche' introuvable")
         st.stop()
 
-    # extraction
-    projet_col = mapping["projet"]
-    resp_col = mapping["responsable"]
-    prog_col = mapping["avancement"]
-    desc_col = mapping["description"]
+    if mapping["responsable"] is None:
+        st.warning("⚠️ Pas de responsable détecté → colonne vide")
 
-    # nettoyage
+    if mapping["avancement"] is None:
+        st.warning("⚠️ Pas d'avancement détecté → mis à 0")
+
+    if mapping["description"] is None:
+        st.warning("⚠️ Pas de description")
+
+    # =========================
+    # EXTRACTION
+    # =========================
     df = pd.DataFrame()
 
-    df["Projet"] = df_raw[projet_col]
-    df["Responsable"] = df_raw[resp_col].astype(str).str.split(";").str[0]
-    df["Avancement"] = pd.to_numeric(df_raw[prog_col], errors="coerce").fillna(0)
+    df["Projet"] = df_raw[mapping["projet"]]
 
-    parsed = df_raw[desc_col].apply(parse_desc)
+    if mapping["responsable"]:
+        df["Responsable"] = (
+            df_raw[mapping["responsable"]]
+            .astype(str)
+            .str.split(";")
+            .str[0]
+            .str.strip()
+        )
+    else:
+        df["Responsable"] = "Non défini"
 
-    df["Description"] = parsed.apply(lambda x: x[0])
-    df["Remarques"] = parsed.apply(lambda x: x[1])
+    if mapping["avancement"]:
+        df["Avancement"] = pd.to_numeric(df_raw[mapping["avancement"]], errors="coerce").fillna(0)
+    else:
+        df["Avancement"] = 0
 
-    # statut
+    if mapping["description"]:
+        parsed = df_raw[mapping["description"]].apply(parse_desc)
+        df["Description"] = parsed.apply(lambda x: x[0])
+        df["Remarques"] = parsed.apply(lambda x: x[1])
+    else:
+        df["Description"] = ""
+        df["Remarques"] = ""
+
+    # =========================
+    # STATUT
+    # =========================
     def statut(x):
-        if x == 0: return "Non démarré"
-        elif x == 100: return "Terminé"
-        elif x < 40: return "En retard"
-        else: return "En cours"
+        if x == 0:
+            return "Non démarré"
+        elif x == 100:
+            return "Terminé"
+        elif x < 40:
+            return "En retard"
+        else:
+            return "En cours"
 
     df["Statut"] = df["Avancement"].apply(statut)
 
@@ -189,10 +216,10 @@ if file:
     col1, col2 = st.columns(2)
 
     with col1:
-        resp = st.selectbox("Responsable", ["Tous"] + sorted(df["Responsable"].dropna().unique()))
+        resp = st.selectbox("👤 Chef de projet", ["Tous"] + sorted(df["Responsable"].dropna().unique()))
 
     with col2:
-        proj = st.selectbox("Projet", ["Tous"] + sorted(df["Projet"].dropna().unique()))
+        proj = st.selectbox("📁 Projet", ["Tous"] + sorted(df["Projet"].dropna().unique()))
 
     df_f = df.copy()
 
@@ -209,41 +236,52 @@ if file:
 
     c1.metric("Projets", len(df_f))
     c2.metric("Avancement", f"{df_f['Avancement'].mean():.0f}%")
-    c3.metric("Retard", len(df_f[df_f["Statut"] == "En retard"]))
+    c3.metric("En retard", len(df_f[df_f["Statut"] == "En retard"]))
 
     # =========================
     # GRAPHIQUES
     # =========================
-    st.subheader("Graphiques")
+    st.subheader("📊 Graphiques")
 
     st.plotly_chart(px.pie(df_f, names="Statut", hole=0.5), use_container_width=True)
-    st.plotly_chart(px.bar(df_f.groupby("Responsable").size().reset_index(name="nb"),
-                           x="Responsable", y="nb"), use_container_width=True)
+
+    st.plotly_chart(
+        px.bar(df_f.groupby("Responsable").size().reset_index(name="nb"),
+               x="Responsable", y="nb"),
+        use_container_width=True
+    )
 
     # =========================
     # TABLEAU
     # =========================
-    st.subheader("Tableau")
+    st.subheader("📋 Tableau structuré")
     st.dataframe(df_f, use_container_width=True)
 
     # =========================
     # TABLEAU OUTLOOK
     # =========================
-    st.subheader("Tableau Outlook")
+    st.subheader("📧 Tableau Outlook")
 
     html = generate_html(df_f)
     st.markdown(html, unsafe_allow_html=True)
 
     # =========================
-    # BOUTON MAIL
+    # BOUTON OUTLOOK WEB
     # =========================
-    link = mail_link(df_f)
+    link = outlook_web_link(df_f)
 
     st.markdown(f"""
     <a href="{link}" target="_blank">
-    <button style="background:#E85D04;color:white;padding:10px;border:none;border-radius:5px">
-    📧 Ouvrir mail Outlook
-    </button>
+        <button style="
+            background:#E85D04;
+            color:white;
+            padding:12px;
+            border:none;
+            border-radius:6px;
+            font-size:16px;
+            cursor:pointer;">
+            📧 Ouvrir dans Outlook Web
+        </button>
     </a>
     """, unsafe_allow_html=True)
 

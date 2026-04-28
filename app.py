@@ -2,31 +2,38 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import re
 
 st.set_page_config(layout="wide")
 
 # ==============================
-# NORMALISATION COLONNES
+# NORMALISATION COLONNES ROBUSTE
 # ==============================
 def normalize_columns(df):
     df.columns = df.columns.str.lower().str.strip()
+
     mapping = {}
 
     for c in df.columns:
-        if "tâche" in c or "task" in c:
+
+        if "tâche" in c or "task" in c or "nom" in c:
             mapping[c] = "projet"
+
         elif "attrib" in c:
             mapping[c] = "responsable"
-        elif "compartiment" in c:
-            mapping[c] = "equipe"
+
         elif "progress" in c:
             mapping[c] = "progression"
+
         elif "description" in c:
             mapping[c] = "description_brut"
 
+        elif "compartiment" in c:
+            mapping[c] = "equipe"
+
     df = df.rename(columns=mapping)
+
     return df
+
 
 # ==============================
 # AVANCEMENT INTELLIGENT
@@ -34,19 +41,24 @@ def normalize_columns(df):
 def clean_progress(x):
     if pd.isna(x):
         return 0
+
     x = str(x).lower()
 
     if "non" in x:
         return 0
-    if "cours" in x:
+    elif "cours" in x:
         return 50
-    if "term" in x:
+    elif "term" in x:
         return 100
 
-    return 0
+    try:
+        return float(x)
+    except:
+        return 0
+
 
 # ==============================
-# PARSE DESCRIPTION PROPRE
+# PARSE DESCRIPTION
 # ==============================
 def parse_description(txt):
     if not isinstance(txt, str):
@@ -55,9 +67,7 @@ def parse_description(txt):
     desc = ""
     rem = ""
 
-    lines = txt.split("\n")
-
-    for l in lines:
+    for l in txt.split("\n"):
         l_low = l.lower()
 
         if "descriptif" in l_low:
@@ -68,20 +78,20 @@ def parse_description(txt):
 
     return desc, rem
 
+
 # ==============================
-# RESPONSABLE INTELLIGENT
+# RESPONSABLE PROPRE
 # ==============================
 def clean_responsable(row):
 
-    # priorité 1 : attribué
     if "responsable" in row and pd.notna(row["responsable"]):
         return row["responsable"]
 
-    # fallback : équipe
-    if "equipe" in row:
+    if "equipe" in row and pd.notna(row["equipe"]):
         return row["equipe"]
 
     return "Non défini"
+
 
 # ==============================
 # TRANSFORMATION GLOBALE
@@ -90,12 +100,14 @@ def transform(df):
 
     df = normalize_columns(df)
 
-    # sécurité colonnes
+    # DEBUG
+    st.write("Colonnes détectées :", df.columns.tolist())
+
+    # sécurisation
     for col in ["projet", "progression", "description_brut"]:
         if col not in df:
             df[col] = ""
 
-    # nettoyage
     df["avancement"] = df["progression"].apply(clean_progress)
     df["responsable"] = df.apply(clean_responsable, axis=1)
 
@@ -126,8 +138,9 @@ def transform(df):
 
     return df_clean
 
+
 # ==============================
-# TABLE HTML PRO (OUTLOOK)
+# TABLE HTML PRO OUTLOOK
 # ==============================
 def generate_html_table(df):
 
@@ -156,10 +169,11 @@ def generate_html_table(df):
     html += "</table>"
     return html
 
+
 # ==============================
 # UI
 # ==============================
-st.title("📊 Suivi des projets intelligent")
+st.title("📊 Suivi des projets")
 
 file = st.file_uploader("📂 Importer Excel", type=["xlsx"])
 
@@ -167,6 +181,11 @@ if file:
 
     df_raw = pd.read_excel(file)
     df = transform(df_raw)
+
+    # sécurité colonne projet
+    if "projet" not in df.columns:
+        st.error("❌ Impossible de détecter la colonne projet")
+        st.stop()
 
     # ==============================
     # FILTRES
@@ -195,8 +214,13 @@ if file:
     c1, c2, c3 = st.columns(3)
 
     c1.metric("Projets", len(df_filtered))
-    c2.metric("Avancement moyen", f"{df_filtered['avancement'].mean():.0f}%")
-    c3.metric("En retard", len(df_filtered[df_filtered["statut"] == "En retard"]))
+
+    if len(df_filtered) > 0:
+        c2.metric("Avancement moyen", f"{df_filtered['avancement'].mean():.0f}%")
+    else:
+        c2.metric("Avancement moyen", "0%")
+
+    c3.metric("En cours", len(df_filtered[df_filtered["statut"] == "En cours"]))
 
     # ==============================
     # GRAPHIQUES
@@ -216,12 +240,12 @@ if file:
     st.dataframe(df_filtered, use_container_width=True)
 
     # ==============================
-    # TABLE MAIL PRO
+    # TABLE MAIL
     # ==============================
-    st.subheader("📧 Tableau Outlook (copier-coller)")
+    st.subheader("📧 Tableau Outlook")
 
     html_table = generate_html_table(df_filtered)
 
     st.code(html_table, language="html")
 
-    st.markdown("👉 Copier ce code et coller directement dans Outlook")
+    st.markdown("👉 Copier ce code dans Outlook → rendu tableau propre")

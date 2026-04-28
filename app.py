@@ -3,246 +3,225 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import re
-import html
 
 st.set_page_config(layout="wide")
-st.title("📊 Suivi des projets")
-
-file = st.file_uploader("📂 Importer Excel brut", type=["xlsx"])
 
 # ==============================
-# 🔧 PARSING TEXTE PROPRE
+# NORMALISATION COLONNES
 # ==============================
-def parse_description(text):
-    data = {
-        "description": "",
-        "admin": "",
-        "intervenants": "",
-        "remarques": ""
-    }
+def normalize_columns(df):
+    df.columns = df.columns.str.lower().str.strip()
+    mapping = {}
 
-    if pd.isna(text):
-        return data
+    for c in df.columns:
+        if "tâche" in c or "task" in c:
+            mapping[c] = "projet"
+        elif "attrib" in c:
+            mapping[c] = "responsable"
+        elif "compartiment" in c:
+            mapping[c] = "equipe"
+        elif "progress" in c:
+            mapping[c] = "progression"
+        elif "description" in c:
+            mapping[c] = "description_brut"
 
-    text = str(text)
-
-    patterns = {
-        "description": r"Descriptif\s*:\s*(.*?)(?=Administration|Liste|Remarque|$)",
-        "admin": r"Administration.*?:\s*(.*?)(?=Liste|Remarque|$)",
-        "intervenants": r"Liste des intervenant.*?:\s*(.*?)(?=Remarque|$)",
-        "remarques": r"Remarque.*?:\s*(.*)"
-    }
-
-    for key, pattern in patterns.items():
-        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-        if match:
-            data[key] = match.group(1).strip()
-
-    return data
+    df = df.rename(columns=mapping)
+    return df
 
 # ==============================
-# 🔧 CLEAN RESPONSABLE
+# AVANCEMENT INTELLIGENT
 # ==============================
-def clean_responsable(x):
+def clean_progress(x):
     if pd.isna(x):
-        return "Non défini"
-    return str(x).split(";")[0].strip()
-
-# ==============================
-# 🔧 AVANCEMENT
-# ==============================
-def extract_avancement(row):
-    txt = str(row.get("Progression", "")).lower()
-
-    if "termin" in txt:
-        return 100
-    elif "cours" in txt:
-        return 50
-    elif "non" in txt:
         return 0
+    x = str(x).lower()
 
-    desc = str(row.get("Description brute", ""))
-    match = re.search(r"(\d+)\s*%", desc)
-    if match:
-        return int(match.group(1))
+    if "non" in x:
+        return 0
+    if "cours" in x:
+        return 50
+    if "term" in x:
+        return 100
 
     return 0
 
 # ==============================
-# 🔧 STATUT
+# PARSE DESCRIPTION PROPRE
 # ==============================
-def statut(x):
-    if x == 0:
-        return "Non démarré"
-    elif x == 100:
-        return "Terminé"
-    elif x < 40:
-        return "En retard"
-    else:
-        return "En cours"
+def parse_description(txt):
+    if not isinstance(txt, str):
+        return "", ""
+
+    desc = ""
+    rem = ""
+
+    lines = txt.split("\n")
+
+    for l in lines:
+        l_low = l.lower()
+
+        if "descriptif" in l_low:
+            desc = l.split(":")[-1].strip()
+
+        elif "remarque" in l_low:
+            rem = l.split(":")[-1].strip()
+
+    return desc, rem
 
 # ==============================
-# 🚀 TRAITEMENT
+# RESPONSABLE INTELLIGENT
 # ==============================
-if file:
+def clean_responsable(row):
 
-    df = pd.read_excel(file)
-    df.columns = df.columns.str.strip()
+    # priorité 1 : attribué
+    if "responsable" in row and pd.notna(row["responsable"]):
+        return row["responsable"]
 
-    # 🔍 détection colonnes
-    col_projet = [c for c in df.columns if "tâche" in c.lower() or "projet" in c.lower()][0]
-    col_resp = [c for c in df.columns if "créé" in c.lower() or "responsable" in c.lower()][0]
-    col_prog = [c for c in df.columns if "progress" in c.lower()][0]
-    col_desc = [c for c in df.columns if "descript" in c.lower()][0]
+    # fallback : équipe
+    if "equipe" in row:
+        return row["equipe"]
 
-    # ==============================
-    # 🧹 CLEAN
-    # ==============================
-    df["Projet"] = df[col_projet]
-    df["Responsable"] = df[col_resp].apply(clean_responsable)
-    df["Description brute"] = df[col_desc].fillna("")
+    return "Non défini"
 
-    # parsing texte
-    parsed = df["Description brute"].apply(parse_description)
+# ==============================
+# TRANSFORMATION GLOBALE
+# ==============================
+def transform(df):
 
-    df["Description"] = parsed.apply(lambda x: x["description"])
-    df["Administration"] = parsed.apply(lambda x: x["admin"])
-    df["Intervenants"] = parsed.apply(lambda x: x["intervenants"])
-    df["Remarques"] = parsed.apply(lambda x: x["remarques"])
+    df = normalize_columns(df)
 
-    # avancement
-    df["Avancement"] = df.apply(extract_avancement, axis=1)
-    df["Statut"] = df["Avancement"].apply(statut)
+    # sécurité colonnes
+    for col in ["projet", "progression", "description_brut"]:
+        if col not in df:
+            df[col] = ""
+
+    # nettoyage
+    df["avancement"] = df["progression"].apply(clean_progress)
+    df["responsable"] = df.apply(clean_responsable, axis=1)
+
+    parsed = df["description_brut"].apply(parse_description)
+
+    df["description"] = parsed.apply(lambda x: x[0])
+    df["remarques"] = parsed.apply(lambda x: x[1])
+
+    # statut
+    def statut(x):
+        if x == 0:
+            return "Non démarré"
+        elif x == 100:
+            return "Terminé"
+        else:
+            return "En cours"
+
+    df["statut"] = df["avancement"].apply(statut)
 
     df_clean = df[[
-        "Projet",
-        "Responsable",
-        "Avancement",
-        "Statut",
-        "Description",
-        "Remarques"
+        "projet",
+        "responsable",
+        "avancement",
+        "statut",
+        "description",
+        "remarques"
     ]]
 
-    # ==============================
-    # 🎯 FILTRES
-    # ==============================
-    st.subheader("🎯 Filtres")
+    return df_clean
 
+# ==============================
+# TABLE HTML PRO (OUTLOOK)
+# ==============================
+def generate_html_table(df):
+
+    html = """
+    <table style="border-collapse:collapse;font-family:Calibri;width:100%">
+    <tr style="background:#0A2463;color:white">
+    <th style="padding:8px;border:1px solid #ddd">Projet</th>
+    <th style="padding:8px;border:1px solid #ddd">Responsable</th>
+    <th style="padding:8px;border:1px solid #ddd">Avancement</th>
+    <th style="padding:8px;border:1px solid #ddd">Statut</th>
+    <th style="padding:8px;border:1px solid #ddd">Description</th>
+    </tr>
+    """
+
+    for _, r in df.iterrows():
+        html += f"""
+        <tr>
+        <td style="padding:6px;border:1px solid #ddd">{r['projet']}</td>
+        <td style="padding:6px;border:1px solid #ddd">{r['responsable']}</td>
+        <td style="padding:6px;border:1px solid #ddd">{r['avancement']}%</td>
+        <td style="padding:6px;border:1px solid #ddd">{r['statut']}</td>
+        <td style="padding:6px;border:1px solid #ddd">{r['description']}</td>
+        </tr>
+        """
+
+    html += "</table>"
+    return html
+
+# ==============================
+# UI
+# ==============================
+st.title("📊 Suivi des projets intelligent")
+
+file = st.file_uploader("📂 Importer Excel", type=["xlsx"])
+
+if file:
+
+    df_raw = pd.read_excel(file)
+    df = transform(df_raw)
+
+    # ==============================
+    # FILTRES
+    # ==============================
     col1, col2 = st.columns(2)
 
-    with col1:
-        resp = st.selectbox(
-            "Responsable",
-            ["Tous"] + sorted(df_clean["Responsable"].unique())
-        )
+    responsables = ["Tous"] + sorted(df["responsable"].dropna().unique())
+    projets = ["Tous"] + sorted(df["projet"].dropna().unique())
 
-    with col2:
-        proj = st.selectbox(
-            "Projet",
-            ["Tous"] + sorted(df_clean["Projet"].dropna().unique())
-        )
+    resp_filter = col1.selectbox("Filtrer par responsable", responsables)
+    proj_filter = col2.selectbox("Filtrer par projet", projets)
 
-    dff = df_clean.copy()
+    df_filtered = df.copy()
 
-    if resp != "Tous":
-        dff = dff[dff["Responsable"] == resp]
+    if resp_filter != "Tous":
+        df_filtered = df_filtered[df_filtered["responsable"] == resp_filter]
 
-    if proj != "Tous":
-        dff = dff[dff["Projet"] == proj]
+    if proj_filter != "Tous":
+        df_filtered = df_filtered[df_filtered["projet"] == proj_filter]
 
     # ==============================
-    # 📈 KPI
+    # KPI
     # ==============================
     st.subheader("📈 Indicateurs")
 
     c1, c2, c3 = st.columns(3)
 
-    c1.metric("Projets", len(dff))
-    c2.metric("Avancement moyen", f"{dff['Avancement'].mean():.0f}%" if len(dff) else "0%")
-    c3.metric("En retard", len(dff[dff["Statut"] == "En retard"]))
+    c1.metric("Projets", len(df_filtered))
+    c2.metric("Avancement moyen", f"{df_filtered['avancement'].mean():.0f}%")
+    c3.metric("En retard", len(df_filtered[df_filtered["statut"] == "En retard"]))
 
     # ==============================
-    # 📊 GRAPHIQUES
+    # GRAPHIQUES
     # ==============================
     st.subheader("📊 Graphiques")
 
-    if len(dff) > 0:
-        fig1 = px.pie(dff, names="Statut", hole=0.5)
+    fig1 = px.pie(df_filtered, names="statut")
+    fig2 = px.bar(df_filtered, x="responsable", y="avancement")
 
-        fig2 = px.bar(
-            dff.groupby("Responsable")["Projet"].count().reset_index(),
-            x="Responsable",
-            y="Projet",
-            title="Charge par responsable"
-        )
-
-        st.plotly_chart(fig1, use_container_width=True)
-        st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True)
 
     # ==============================
-    # 📋 TABLEAU STYLE EXCEL
+    # TABLEAU PROPRE
     # ==============================
     st.subheader("📋 Tableau structuré")
-
-    def style_table(df):
-        return df.style \
-            .set_properties(**{
-                "border": "1px solid #ddd",
-                "padding": "6px"
-            }) \
-            .set_table_styles([
-                {
-                    "selector": "th",
-                    "props": [
-                        ("background-color", "#0A2463"),
-                        ("color", "white"),
-                        ("padding", "8px")
-                    ]
-                }
-            ])
-
-    st.write(style_table(dff))
+    st.dataframe(df_filtered, use_container_width=True)
 
     # ==============================
-    # 📧 TABLEAU OUTLOOK
+    # TABLE MAIL PRO
     # ==============================
-    st.subheader("📧 Tableau pour Outlook")
+    st.subheader("📧 Tableau Outlook (copier-coller)")
 
-    def clean_text(val):
-        return html.escape(str(val)).replace("\n", "<br>")
-
-    html_table = "<table style='border-collapse:collapse;font-family:Calibri;width:100%'>"
-
-    html_table += "<tr style='background:#0A2463;color:white'>"
-    for col in dff.columns:
-        html_table += f"<th style='border:1px solid #ddd;padding:8px'>{col}</th>"
-    html_table += "</tr>"
-
-    for _, row in dff.iterrows():
-        html_table += "<tr>"
-        for val in row:
-            html_table += f"<td style='border:1px solid #ddd;padding:6px'>{clean_text(val)}</td>"
-        html_table += "</tr>"
-
-    html_table += "</table>"
+    html_table = generate_html_table(df_filtered)
 
     st.code(html_table, language="html")
 
-    # ==============================
-    # 🧠 ANALYSE SIMPLE
-    # ==============================
-    st.subheader("🧠 Analyse automatique")
-
-    if len(dff):
-        av = dff["Avancement"].mean()
-        retard = len(dff[dff["Statut"] == "En retard"])
-
-        st.write(f"""
-✔ {len(dff)} projets  
-✔ Avancement moyen : {av:.0f}%  
-✔ {retard} en retard  
-
-➡️ Lecture :
-- < 40% → risque  
-- > 70% → OK  
-""")
+    st.markdown("👉 Copier ce code et coller directement dans Outlook")

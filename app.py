@@ -2,85 +2,122 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import re
 
 st.set_page_config(layout="wide")
-
 st.title("📊 Suivi des projets")
 
 file = st.file_uploader("📂 Importer Excel brut", type=["xlsx"])
+
+# ==============================
+# FONCTIONS INTELLIGENTES
+# ==============================
+
+def clean_responsable(x):
+    if pd.isna(x):
+        return "Non défini"
+    # si plusieurs noms → prendre le premier
+    return str(x).split(";")[0].strip()
+
+def extract_avancement(row):
+    # 1. depuis colonne progression
+    prog = str(row.get("Progression", "")).lower()
+
+    if "termin" in prog:
+        return 100
+    elif "cours" in prog:
+        return 50
+    elif "non" in prog:
+        return 0
+
+    # 2. fallback : chercher % dans description
+    desc = str(row.get("Description", ""))
+    match = re.search(r"(\d+)\s*%", desc)
+    if match:
+        return int(match.group(1))
+
+    return 0
+
+def get_statut(x):
+    if x == 0:
+        return "Non démarré"
+    elif x == 100:
+        return "Terminé"
+    elif x < 40:
+        return "En retard"
+    else:
+        return "En cours"
+
+# ==============================
+# TRAITEMENT
+# ==============================
 
 if file:
 
     df = pd.read_excel(file)
 
-    # ==============================
-    # RENOMMAGE PROPRE
-    # ==============================
-    df = df.rename(columns={
-        "Nom de tâche": "Projet",
-        "Créé par": "Responsable",
-        "Progression": "Statut_brut",
-        "Description": "Description"
-    })
+    # NORMALISATION colonnes
+    df.columns = df.columns.str.strip()
 
-    # ==============================
-    # AVANCEMENT (conversion texte → %)
-    # ==============================
-    def convert_progress(x):
-        if isinstance(x, str):
-            if "non démarr" in x.lower(): return 0
-            if "en cours" in x.lower(): return 50
-            if "termin" in x.lower(): return 100
-        return 0
-
-    df["Avancement"] = df["Statut_brut"].apply(convert_progress)
-
-    # ==============================
-    # STATUT
-    # ==============================
-    def statut(x):
-        if x == 0: return "Non démarré"
-        elif x == 100: return "Terminé"
-        elif x < 40: return "En retard"
-        else: return "En cours"
-
-    df["Statut"] = df["Avancement"].apply(statut)
+    # mapping intelligent
+    col_projet = [c for c in df.columns if "tâche" in c.lower() or "projet" in c.lower()][0]
+    col_resp = [c for c in df.columns if "créé" in c.lower() or "responsable" in c.lower()][0]
+    col_prog = [c for c in df.columns if "progress" in c.lower()][0]
+    col_desc = [c for c in df.columns if "descript" in c.lower()][0]
 
     # ==============================
     # CLEAN
     # ==============================
-    df["Responsable"] = df["Responsable"].fillna("Non défini")
+    df["Projet"] = df[col_projet]
+    df["Responsable"] = df[col_resp].apply(clean_responsable)
+    df["Description"] = df[col_desc].fillna("")
+
+    # AVANCEMENT INTELLIGENT
+    df["Avancement"] = df.apply(extract_avancement, axis=1)
+
+    df["Statut"] = df["Avancement"].apply(get_statut)
 
     df_clean = df[[
         "Projet",
         "Responsable",
         "Avancement",
-        "Statut"
+        "Statut",
+        "Description"
     ]]
 
     # ==============================
-    # FILTRE RESPONSABLE
+    # FILTRES
     # ==============================
-    st.subheader("🎯 Filtre")
+    st.subheader("🎯 Filtres")
 
-    chefs = df_clean["Responsable"].unique()
-    chef = st.selectbox("Choisir un responsable", ["Tous"] + list(chefs))
+    col1, col2 = st.columns(2)
 
-    if chef != "Tous":
-        dff = df_clean[df_clean["Responsable"] == chef]
-    else:
-        dff = df_clean
+    with col1:
+        resp_list = sorted(df_clean["Responsable"].unique())
+        resp = st.selectbox("Responsable", ["Tous"] + resp_list)
+
+    with col2:
+        proj_list = sorted(df_clean["Projet"].dropna().unique())
+        proj = st.selectbox("Projet", ["Tous"] + proj_list)
+
+    dff = df_clean.copy()
+
+    if resp != "Tous":
+        dff = dff[dff["Responsable"] == resp]
+
+    if proj != "Tous":
+        dff = dff[dff["Projet"] == proj]
 
     # ==============================
     # KPI
     # ==============================
     st.subheader("📈 Indicateurs")
 
-    col1, col2, col3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
 
-    col1.metric("Projets", len(dff))
-    col2.metric("Avancement moyen", f"{dff['Avancement'].mean():.0f}%")
-    col3.metric("En retard", len(dff[dff["Statut"]=="En retard"]))
+    c1.metric("Projets", len(dff))
+    c2.metric("Avancement moyen", f"{dff['Avancement'].mean():.0f}%")
+    c3.metric("En retard", len(dff[dff["Statut"] == "En retard"]))
 
     # ==============================
     # GRAPHIQUES
@@ -105,7 +142,7 @@ if file:
     st.dataframe(dff, use_container_width=True)
 
     # ==============================
-    # TABLEAU OUTLOOK
+    # TABLEAU OUTLOOK PROPRE
     # ==============================
     st.subheader("📧 Tableau pour Outlook")
 
@@ -113,31 +150,35 @@ if file:
     html += "<tr style='background:#0A2463;color:white'>"
 
     for col in dff.columns:
-        html += f"<th style='padding:8px;border:1px solid #ddd'>{col}</th>"
+        html += f"<th style='border:1px solid #ddd;padding:8px'>{col}</th>"
 
     html += "</tr>"
 
     for _, row in dff.iterrows():
         html += "<tr>"
         for val in row:
-            html += f"<td style='padding:6px;border:1px solid #ddd'>{val}</td>"
+            html += f"<td style='border:1px solid #ddd;padding:6px'>{val}</td>"
         html += "</tr>"
 
     html += "</table>"
 
-    st.text_area("Copier-coller dans Outlook", html, height=300)
+    st.code(html, language="html")
 
     # ==============================
-    # IA SIMPLE
+    # IA SIMPLE (FIABLE)
     # ==============================
     st.subheader("🧠 Analyse automatique")
 
     total = len(dff)
     av = dff["Avancement"].mean()
-    retard = len(dff[dff["Statut"]=="En retard"])
+    retard = len(dff[dff["Statut"] == "En retard"])
 
     st.write(f"""
-- {total} projets suivis  
-- Avancement moyen : {av:.0f}%  
-- {retard} projets en retard  
+✔ {total} projets analysés  
+✔ Avancement moyen : {av:.0f}%  
+✔ {retard} projets en retard  
+
+➡️ Lecture rapide :
+- Si < 50% → portefeuille en difficulté  
+- Si > 70% → bonne dynamique  
 """)

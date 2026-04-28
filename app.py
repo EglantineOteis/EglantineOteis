@@ -154,60 +154,54 @@ def generate_html_table(df):
     ">
     """
 
-    # ======================
-    # HEADER BLEU
-    # ======================
+    # HEADER
     html_table += """
     <tr style="background:#0A2463;color:white;text-align:left;">
     """
 
     for col in df.columns:
         html_table += f"""
-        <th style="
-            padding:10px;
-            border:1px solid #d9d9d9;
-        ">{col}</th>
+        <th style="padding:10px;border:1px solid #d9d9d9;">
+            {col}
+        </th>
         """
 
     html_table += "</tr>"
 
-    # ======================
     # LIGNES
-    # ======================
     for i, (_, row) in enumerate(df.iterrows()):
 
         bg = "#ffffff" if i % 2 == 0 else "#f4f6fa"
-
         html_table += f"<tr style='background:{bg}'>"
 
         for col in df.columns:
 
             val = str(row[col]).replace("\n", "<br>")
 
-            # 🎯 couleur spéciale pour avancement
             if col == "avancement":
-                cell_style = """
-                padding:8px;
-                border:1px solid #ddd;
-                color:#E85D04;
-                font-weight:bold;
-                text-align:center;
+                html_table += f"""
+                <td style="
+                    padding:8px;
+                    border:1px solid #ddd;
+                    color:#E85D04;
+                    font-weight:bold;
+                    text-align:center;
+                ">
+                    {val}%
+                </td>
                 """
-                val = f"{val}%"
-
             else:
-                cell_style = """
-                padding:8px;
-                border:1px solid #ddd;
+                html_table += f"""
+                <td style="padding:8px;border:1px solid #ddd;">
+                    {val}
+                </td>
                 """
-
-            html_table += f"<td style='{cell_style}'>{val}</td>"
 
         html_table += "</tr>"
 
     html_table += "</table>"
 
-    return html_tablee
+    return html_table
 
 
 # ==============================

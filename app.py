@@ -145,25 +145,69 @@ def transform(df):
 # ==============================
 def generate_html_table(df):
 
-    html_table = "<table style='border-collapse:collapse;font-family:Calibri;width:100%'>"
+    html_table = """
+    <table style="
+        border-collapse:collapse;
+        font-family:Calibri;
+        width:100%;
+        font-size:13px;
+    ">
+    """
 
-    # header
-    html_table += "<tr style='background:#0A2463;color:white'>"
+    # ======================
+    # HEADER BLEU
+    # ======================
+    html_table += """
+    <tr style="background:#0A2463;color:white;text-align:left;">
+    """
+
     for col in df.columns:
-        html_table += f"<th style='border:1px solid #ddd;padding:8px'>{col}</th>"
+        html_table += f"""
+        <th style="
+            padding:10px;
+            border:1px solid #d9d9d9;
+        ">{col}</th>
+        """
+
     html_table += "</tr>"
 
-    # lignes
-    for _, row in df.iterrows():
-        html_table += "<tr>"
-        for val in row:
-            safe = html.escape(str(val)).replace("\n", "<br>")
-            html_table += f"<td style='border:1px solid #ddd;padding:6px'>{safe}</td>"
+    # ======================
+    # LIGNES
+    # ======================
+    for i, (_, row) in enumerate(df.iterrows()):
+
+        bg = "#ffffff" if i % 2 == 0 else "#f4f6fa"
+
+        html_table += f"<tr style='background:{bg}'>"
+
+        for col in df.columns:
+
+            val = str(row[col]).replace("\n", "<br>")
+
+            # 🎯 couleur spéciale pour avancement
+            if col == "avancement":
+                cell_style = """
+                padding:8px;
+                border:1px solid #ddd;
+                color:#E85D04;
+                font-weight:bold;
+                text-align:center;
+                """
+                val = f"{val}%"
+
+            else:
+                cell_style = """
+                padding:8px;
+                border:1px solid #ddd;
+                """
+
+            html_table += f"<td style='{cell_style}'>{val}</td>"
+
         html_table += "</tr>"
 
     html_table += "</table>"
 
-    return html_table
+    return html_tablee
 
 
 # ==============================

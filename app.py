@@ -21,10 +21,13 @@ def smart_detect(df):
     for col in df.columns:
         c = col.lower()
 
-        if "tâche" in c or "tache" in c:
+        if "tâche" in c:
             mapping["projet"] = col
 
-        elif "attribué" in c:
+        elif "responsable" in c:
+            mapping["responsable"] = col
+
+        elif "attribué" in c and mapping["responsable"] is None:
             mapping["responsable"] = col
 
         elif "progress" in c:
@@ -37,25 +40,41 @@ def smart_detect(df):
 
 
 # =========================
-# 🧠 PARSE DESCRIPTION
+# 🧠 PARSE TEXTE PROPRE
 # =========================
 def parse_desc(txt):
 
-    desc, rem = "", ""
+    data = {
+        "desc": "",
+        "rem": "",
+        "av": None
+    }
 
     if not isinstance(txt, str):
-        return desc, rem
+        return data
 
     for l in txt.split("\n"):
-        l_low = l.lower()
 
-        if "descriptif" in l_low:
-            desc = l.split(":",1)[-1].strip()
+        if ":" not in l:
+            continue
 
-        if "remarque" in l_low:
-            rem = l.split(":",1)[-1].strip()
+        key, val = l.split(":", 1)
+        key = key.lower()
+        val = val.strip()
 
-    return desc, rem
+        if "descriptif" in key:
+            data["desc"] = val
+
+        elif "remarque" in key:
+            data["rem"] = val
+
+        elif "avancement" in key:
+            try:
+                data["av"] = float(val.replace("%",""))
+            except:
+                pass
+
+    return data
 
 
 # =========================
@@ -71,7 +90,7 @@ def generate_html(df):
         html += f"<th style='padding:10px;border:1px solid #ddd'>{col}</th>"
     html += "</tr>"
 
-    # LIGNES
+    # ROWS
     for i, (_, row) in enumerate(df.iterrows()):
         bg = "#f4f6fa" if i % 2 else "white"
         html += f"<tr style='background:{bg}'>"
@@ -91,29 +110,26 @@ def generate_html(df):
 
 
 # =========================
-# 📧 OUTLOOK WEB
+# 📧 MAIL SAFE (SANS BUG)
 # =========================
-def outlook_web_link(df):
+def outlook_mail(df):
 
-    html_table = generate_html(df)
+    sujet = "Suivi des projets"
 
-    subject = "Suivi des projets"
+    texte = "Bonjour,\n\nVoici le suivi des projets.\n\n"
 
-    body = f"""
-Bonjour,
+    for _, r in df.iterrows():
+        texte += f"- {r['Projet']} | {r['Responsable']} | {r['Avancement']}%\n"
 
-Voici le suivi des projets :
+    texte += "\nCordialement"
 
-{html_table}
+    url = f"mailto:?subject={urllib.parse.quote(sujet)}&body={urllib.parse.quote(texte)}"
 
-Cordialement
-"""
-
-    return f"https://outlook.office.com/mail/deeplink/compose?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}"
+    return url
 
 
 # =========================
-# 🤖 IA SIMPLE
+# 🤖 IA PRO (SANS API)
 # =========================
 def ai_summary(df):
 
@@ -121,16 +137,24 @@ def ai_summary(df):
     av = df["Avancement"].mean()
     retard = len(df[df["Statut"] == "En retard"])
 
-    return f"""
-📊 Synthèse :
+    critiques = df[df["Avancement"] < 40]["Projet"].head(5).tolist()
 
-- {total} projets
+    txt = f"""
+Synthèse direction :
+
+- {total} projets en cours
 - Avancement moyen : {av:.0f}%
-- {retard} en retard
+- {retard} projets en retard
 
-⚠️ Priorité :
-Suivre les projets < 40%
+Points critiques :
 """
+
+    for p in critiques:
+        txt += f"\n- {p}"
+
+    txt += "\n\nRecommandation : prioriser les projets en dessous de 40%."
+
+    return txt
 
 
 # =========================
@@ -145,81 +169,51 @@ if file:
     df_raw = pd.read_excel(file)
     df_raw.columns = df_raw.columns.str.lower().str.strip()
 
-    st.write("Colonnes détectées :", df_raw.columns.tolist())
-
     mapping = smart_detect(df_raw)
-    st.write("Mapping :", mapping)
 
-    # 🚨 ANTI CRASH
     if mapping["projet"] is None:
-        st.error("❌ Colonne 'Nom de tâche' introuvable")
+        st.error("❌ colonne projet introuvable")
         st.stop()
 
-    if mapping["responsable"] is None:
-        st.warning("⚠️ Pas de responsable détecté → colonne vide")
-
-    if mapping["avancement"] is None:
-        st.warning("⚠️ Pas d'avancement détecté → mis à 0")
-
-    if mapping["description"] is None:
-        st.warning("⚠️ Pas de description")
-
-    # =========================
-    # EXTRACTION
-    # =========================
     df = pd.DataFrame()
 
     df["Projet"] = df_raw[mapping["projet"]]
 
-    if mapping["responsable"]:
-        df["Responsable"] = (
-            df_raw[mapping["responsable"]]
-            .astype(str)
-            .str.split(";")
-            .str[0]
-            .str.strip()
-        )
-    else:
-        df["Responsable"] = "Non défini"
+    df["Responsable"] = (
+        df_raw[mapping["responsable"]]
+        .astype(str)
+        .str.split(";")
+        .str[0]
+        .fillna("Non défini")
+    )
 
-    if mapping["avancement"]:
-        df["Avancement"] = pd.to_numeric(df_raw[mapping["avancement"]], errors="coerce").fillna(0)
-    else:
-        df["Avancement"] = 0
+    df["Avancement"] = pd.to_numeric(
+        df_raw[mapping["avancement"]],
+        errors="coerce"
+    )
 
-    if mapping["description"]:
-        parsed = df_raw[mapping["description"]].apply(parse_desc)
-        df["Description"] = parsed.apply(lambda x: x[0])
-        df["Remarques"] = parsed.apply(lambda x: x[1])
-    else:
-        df["Description"] = ""
-        df["Remarques"] = ""
+    # fallback via description
+    parsed = df_raw[mapping["description"]].apply(parse_desc)
 
-    # =========================
-    # STATUT
-    # =========================
+    df["Description"] = parsed.apply(lambda x: x["desc"])
+    df["Remarques"] = parsed.apply(lambda x: x["rem"])
+
+    df["Avancement"] = df["Avancement"].fillna(
+        parsed.apply(lambda x: x["av"])
+    ).fillna(0)
+
+    # statut
     def statut(x):
-        if x == 0:
-            return "Non démarré"
-        elif x == 100:
-            return "Terminé"
-        elif x < 40:
-            return "En retard"
-        else:
-            return "En cours"
+        if x == 0: return "Non démarré"
+        elif x == 100: return "Terminé"
+        elif x < 40: return "En retard"
+        return "En cours"
 
     df["Statut"] = df["Avancement"].apply(statut)
 
-    # =========================
-    # FILTRES
-    # =========================
-    col1, col2 = st.columns(2)
-
-    with col1:
-        resp = st.selectbox("👤 Chef de projet", ["Tous"] + sorted(df["Responsable"].dropna().unique()))
-
-    with col2:
-        proj = st.selectbox("📁 Projet", ["Tous"] + sorted(df["Projet"].dropna().unique()))
+    # ================= FILTERS
+    resp = st.selectbox("👤 Chef de projet", ["Tous"] + sorted(df["Responsable"].unique()))
+    proj = st.selectbox("📁 Projet", ["Tous"] + sorted(df["Projet"].unique()))
 
     df_f = df.copy()
 
@@ -229,64 +223,33 @@ if file:
     if proj != "Tous":
         df_f = df_f[df_f["Projet"] == proj]
 
-    # =========================
-    # KPI
-    # =========================
+    # ================= KPI
     c1, c2, c3 = st.columns(3)
-
     c1.metric("Projets", len(df_f))
     c2.metric("Avancement", f"{df_f['Avancement'].mean():.0f}%")
     c3.metric("En retard", len(df_f[df_f["Statut"] == "En retard"]))
 
-    # =========================
-    # GRAPHIQUES
-    # =========================
-    st.subheader("📊 Graphiques")
-
+    # ================= GRAPH
     st.plotly_chart(px.pie(df_f, names="Statut", hole=0.5), use_container_width=True)
 
-    st.plotly_chart(
-        px.bar(df_f.groupby("Responsable").size().reset_index(name="nb"),
-               x="Responsable", y="nb"),
-        use_container_width=True
-    )
-
-    # =========================
-    # TABLEAU
-    # =========================
-    st.subheader("📋 Tableau structuré")
+    # ================= TABLE
     st.dataframe(df_f, use_container_width=True)
 
-    # =========================
-    # TABLEAU OUTLOOK
-    # =========================
-    st.subheader("📧 Tableau Outlook")
-
+    # ================= TABLE HTML
     html = generate_html(df_f)
     st.markdown(html, unsafe_allow_html=True)
 
-    # =========================
-    # BOUTON OUTLOOK WEB
-    # =========================
-    link = outlook_web_link(df_f)
+    # ================= MAIL BUTTON
+    mail_link = outlook_mail(df_f)
 
     st.markdown(f"""
-    <a href="{link}" target="_blank">
-        <button style="
-            background:#E85D04;
-            color:white;
-            padding:12px;
-            border:none;
-            border-radius:6px;
-            font-size:16px;
-            cursor:pointer;">
-            📧 Ouvrir dans Outlook Web
+    <a href="{mail_link}">
+        <button style="background:#E85D04;color:white;padding:12px;border:none;border-radius:6px">
+        📧 Envoyer mail
         </button>
     </a>
     """, unsafe_allow_html=True)
 
-    # =========================
-    # IA
-    # =========================
+    # ================= IA
     st.subheader("🤖 Analyse automatique")
     st.text(ai_summary(df_f))

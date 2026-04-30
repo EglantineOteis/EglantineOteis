@@ -7,9 +7,9 @@ import urllib.parse
 st.set_page_config(layout="wide")
 
 # =========================
-# 🔍 DETECTION ROBUSTE
+# 🔍 DETECTION COLONNES
 # =========================
-def smart_detect(df):
+def detect_columns(df):
 
     mapping = {
         "projet": None,
@@ -40,57 +40,70 @@ def smart_detect(df):
 
 
 # =========================
-# 🧠 PARSE TEXTE PROPRE
+# 🧠 PARSE TEXTE
 # =========================
-def parse_desc(txt):
+def parse_description(txt):
 
-    data = {
-        "desc": "",
-        "rem": "",
-        "av": None
-    }
+    desc = ""
+    rem = ""
+    av = None
 
     if not isinstance(txt, str):
-        return data
+        return desc, rem, av
 
-    for l in txt.split("\n"):
+    try:
+        if "Descriptif" in txt:
+            desc = txt.split("Descriptif :",1)[1].split("Administration")[0].strip()
+    except:
+        pass
 
-        if ":" not in l:
-            continue
+    try:
+        if "Remarques" in txt:
+            rem = txt.split("Remarques :",1)[1].strip()
+    except:
+        pass
 
-        key, val = l.split(":", 1)
-        key = key.lower()
-        val = val.strip()
+    try:
+        if "Avancement" in txt:
+            val = txt.split("Avancement :",1)[1].split("\n")[0]
+            av = float(val.replace("%","").strip())
+    except:
+        pass
 
-        if "descriptif" in key:
-            data["desc"] = val
-
-        elif "remarque" in key:
-            data["rem"] = val
-
-        elif "avancement" in key:
-            try:
-                data["av"] = float(val.replace("%",""))
-            except:
-                pass
-
-    return data
+    return desc, rem, av
 
 
 # =========================
-# 📊 TABLE HTML PRO
+# 👤 NETTOYAGE RESPONSABLE
+# =========================
+def clean_responsable(x):
+
+    if pd.isna(x):
+        return "Non défini"
+
+    x = str(x)
+
+    if ";" in x:
+        return x.split(";")[0].strip()
+
+    if "," in x:
+        return x.split(",")[0].strip()
+
+    return x.strip()
+
+
+# =========================
+# 📊 TABLE HTML
 # =========================
 def generate_html(df):
 
     html = "<table style='border-collapse:collapse;font-family:Calibri;width:100%'>"
 
-    # HEADER
     html += "<tr style='background:#0A2463;color:white'>"
     for col in df.columns:
         html += f"<th style='padding:10px;border:1px solid #ddd'>{col}</th>"
     html += "</tr>"
 
-    # ROWS
     for i, (_, row) in enumerate(df.iterrows()):
         bg = "#f4f6fa" if i % 2 else "white"
         html += f"<tr style='background:{bg}'>"
@@ -110,26 +123,22 @@ def generate_html(df):
 
 
 # =========================
-# 📧 MAIL SAFE (SANS BUG)
+# 📧 MAIL (SAFE)
 # =========================
-def outlook_mail(df):
+def generate_mail(df):
 
-    sujet = "Suivi des projets"
-
-    texte = "Bonjour,\n\nVoici le suivi des projets.\n\n"
+    texte = "Bonjour,\n\nVoici le suivi des projets :\n\n"
 
     for _, r in df.iterrows():
         texte += f"- {r['Projet']} | {r['Responsable']} | {r['Avancement']}%\n"
 
     texte += "\nCordialement"
 
-    url = f"mailto:?subject={urllib.parse.quote(sujet)}&body={urllib.parse.quote(texte)}"
-
-    return url
+    return f"mailto:?subject={urllib.parse.quote('Suivi des projets')}&body={urllib.parse.quote(texte)}"
 
 
 # =========================
-# 🤖 IA PRO (SANS API)
+# 🤖 IA SIMPLE PRO
 # =========================
 def ai_summary(df):
 
@@ -140,19 +149,19 @@ def ai_summary(df):
     critiques = df[df["Avancement"] < 40]["Projet"].head(5).tolist()
 
     txt = f"""
-Synthèse direction :
+📊 Synthèse direction
 
-- {total} projets en cours
+- {total} projets
 - Avancement moyen : {av:.0f}%
 - {retard} projets en retard
 
-Points critiques :
+⚠️ Projets critiques :
 """
 
     for p in critiques:
         txt += f"\n- {p}"
 
-    txt += "\n\nRecommandation : prioriser les projets en dessous de 40%."
+    txt += "\n\n👉 Recommandation : prioriser les projets < 40%"
 
     return txt
 
@@ -169,51 +178,58 @@ if file:
     df_raw = pd.read_excel(file)
     df_raw.columns = df_raw.columns.str.lower().str.strip()
 
-    mapping = smart_detect(df_raw)
+    mapping = detect_columns(df_raw)
 
     if mapping["projet"] is None:
-        st.error("❌ colonne projet introuvable")
+        st.error("❌ colonne 'Nom de tâche' introuvable")
         st.stop()
 
     df = pd.DataFrame()
 
+    # ================= EXTRACTION
     df["Projet"] = df_raw[mapping["projet"]]
 
-    df["Responsable"] = (
-        df_raw[mapping["responsable"]]
-        .astype(str)
-        .str.split(";")
-        .str[0]
-        .fillna("Non défini")
-    )
+    df["Responsable"] = df_raw[mapping["responsable"]].apply(clean_responsable)
 
     df["Avancement"] = pd.to_numeric(
         df_raw[mapping["avancement"]],
         errors="coerce"
     )
 
-    # fallback via description
-    parsed = df_raw[mapping["description"]].apply(parse_desc)
+    parsed = df_raw[mapping["description"]].apply(parse_description)
 
-    df["Description"] = parsed.apply(lambda x: x["desc"])
-    df["Remarques"] = parsed.apply(lambda x: x["rem"])
+    df["Description"] = parsed.apply(lambda x: x[0])
+    df["Remarques"] = parsed.apply(lambda x: x[1])
 
     df["Avancement"] = df["Avancement"].fillna(
-        parsed.apply(lambda x: x["av"])
+        parsed.apply(lambda x: x[2])
     ).fillna(0)
 
-    # statut
+    # ================= NETTOYAGE
+    df = df[~df["Projet"].str.lower().str.contains("compte rendu|tableau", na=False)]
+    df = df.drop_duplicates(subset=["Projet"])
+
+    # ================= STATUT
     def statut(x):
-        if x == 0: return "Non démarré"
-        elif x == 100: return "Terminé"
-        elif x < 40: return "En retard"
-        return "En cours"
+        if x == 0:
+            return "Non démarré"
+        elif x == 100:
+            return "Terminé"
+        elif x < 40:
+            return "En retard"
+        else:
+            return "En cours"
 
     df["Statut"] = df["Avancement"].apply(statut)
 
-    # ================= FILTERS
-    resp = st.selectbox("👤 Chef de projet", ["Tous"] + sorted(df["Responsable"].unique()))
-    proj = st.selectbox("📁 Projet", ["Tous"] + sorted(df["Projet"].unique()))
+    # ================= FILTRES
+    col1, col2 = st.columns(2)
+
+    with col1:
+        resp = st.selectbox("👤 Chef de projet", ["Tous"] + sorted(df["Responsable"].unique()))
+
+    with col2:
+        proj = st.selectbox("📁 Projet", ["Tous"] + sorted(df["Projet"].unique()))
 
     df_f = df.copy()
 
@@ -225,27 +241,37 @@ if file:
 
     # ================= KPI
     c1, c2, c3 = st.columns(3)
+
     c1.metric("Projets", len(df_f))
     c2.metric("Avancement", f"{df_f['Avancement'].mean():.0f}%")
     c3.metric("En retard", len(df_f[df_f["Statut"] == "En retard"]))
 
-    # ================= GRAPH
+    # ================= GRAPHIQUES
+    st.subheader("📊 Graphiques")
+
     st.plotly_chart(px.pie(df_f, names="Statut", hole=0.5), use_container_width=True)
 
+    st.plotly_chart(
+        px.bar(df_f.groupby("Responsable").size().reset_index(name="nb"),
+               x="Responsable", y="nb"),
+        use_container_width=True
+    )
+
     # ================= TABLE
+    st.subheader("📋 Tableau structuré")
     st.dataframe(df_f, use_container_width=True)
 
     # ================= TABLE HTML
+    st.subheader("📧 Tableau Outlook")
+
     html = generate_html(df_f)
     st.markdown(html, unsafe_allow_html=True)
 
-    # ================= MAIL BUTTON
-    mail_link = outlook_mail(df_f)
-
+    # ================= MAIL
     st.markdown(f"""
-    <a href="{mail_link}">
+    <a href="{generate_mail(df_f)}">
         <button style="background:#E85D04;color:white;padding:12px;border:none;border-radius:6px">
-        📧 Envoyer mail
+        📧 Envoyer le mail
         </button>
     </a>
     """, unsafe_allow_html=True)

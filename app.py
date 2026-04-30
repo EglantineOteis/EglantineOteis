@@ -40,7 +40,7 @@ def detect_columns(df):
 
 
 # =========================
-# 🧠 PARSE TEXTE
+# 🧠 PARSE DESCRIPTION
 # =========================
 def parse_description(txt):
 
@@ -93,17 +93,19 @@ def clean_responsable(x):
 
 
 # =========================
-# 📊 TABLE HTML
+# 📊 TABLE HTML (BLEU + COULEUR)
 # =========================
 def generate_html(df):
 
     html = "<table style='border-collapse:collapse;font-family:Calibri;width:100%'>"
 
+    # HEADER
     html += "<tr style='background:#0A2463;color:white'>"
     for col in df.columns:
         html += f"<th style='padding:10px;border:1px solid #ddd'>{col}</th>"
     html += "</tr>"
 
+    # LIGNES
     for i, (_, row) in enumerate(df.iterrows()):
         bg = "#f4f6fa" if i % 2 else "white"
         html += f"<tr style='background:{bg}'>"
@@ -112,7 +114,17 @@ def generate_html(df):
             val = str(row[col]).replace("\n", "<br>")
 
             if col == "Avancement":
-                html += f"<td style='padding:8px;border:1px solid #ddd;color:#E85D04;font-weight:bold;text-align:center'>{val}%</td>"
+
+                # couleur selon statut
+                if row["Statut"] == "Début":
+                    color = "#d62828"
+                elif row["Statut"] == "Milieu":
+                    color = "#f77f00"
+                else:
+                    color = "#2a9d8f"
+
+                html += f"<td style='padding:8px;border:1px solid #ddd;color:{color};font-weight:bold;text-align:center'>{val}%</td>"
+
             else:
                 html += f"<td style='padding:8px;border:1px solid #ddd'>{val}</td>"
 
@@ -130,7 +142,7 @@ def generate_mail(df):
     texte = "Bonjour,\n\nVoici le suivi des projets :\n\n"
 
     for _, r in df.iterrows():
-        texte += f"- {r['Projet']} | {r['Responsable']} | {r['Avancement']}%\n"
+        texte += f"- {r['Projet']} | {r['Responsable']} | {r['Avancement']}% ({r['Statut']})\n"
 
     texte += "\nCordialement"
 
@@ -138,30 +150,26 @@ def generate_mail(df):
 
 
 # =========================
-# 🤖 IA SIMPLE PRO
+# 🤖 ANALYSE SIMPLE
 # =========================
 def ai_summary(df):
 
     total = len(df)
-    av = df["Avancement"].mean()
-    retard = len(df[df["Statut"] == "En retard"])
-
-    critiques = df[df["Avancement"] < 40]["Projet"].head(5).tolist()
+    debut = len(df[df["Statut"] == "Début"])
+    milieu = len(df[df["Statut"] == "Milieu"])
+    fin = len(df[df["Statut"] == "Fin"])
 
     txt = f"""
 📊 Synthèse direction
 
 - {total} projets
-- Avancement moyen : {av:.0f}%
-- {retard} projets en retard
+- {debut} en phase de démarrage
+- {milieu} en cours
+- {fin} proches de finalisation
 
-⚠️ Projets critiques :
+🎯 Priorité :
+accélérer les projets en phase "Début"
 """
-
-    for p in critiques:
-        txt += f"\n- {p}"
-
-    txt += "\n\n👉 Recommandation : prioriser les projets < 40%"
 
     return txt
 
@@ -209,16 +217,14 @@ if file:
     df = df[~df["Projet"].str.lower().str.contains("compte rendu|tableau", na=False)]
     df = df.drop_duplicates(subset=["Projet"])
 
-    # ================= STATUT
+    # ================= STATUT (NOUVEAU)
     def statut(x):
-        if x == 0:
-            return "Non démarré"
-        elif x == 100:
-            return "Terminé"
-        elif x < 40:
-            return "En retard"
+        if x <= 30:
+            return "Début"
+        elif x <= 70:
+            return "Milieu"
         else:
-            return "En cours"
+            return "Fin"
 
     df["Statut"] = df["Avancement"].apply(statut)
 
@@ -244,7 +250,7 @@ if file:
 
     c1.metric("Projets", len(df_f))
     c2.metric("Avancement", f"{df_f['Avancement'].mean():.0f}%")
-    c3.metric("En retard", len(df_f[df_f["Statut"] == "En retard"]))
+    c3.metric("Phase Début", len(df_f[df_f["Statut"] == "Début"]))
 
     # ================= GRAPHIQUES
     st.subheader("📊 Graphiques")
@@ -263,9 +269,7 @@ if file:
 
     # ================= TABLE HTML
     st.subheader("📧 Tableau Outlook")
-
-    html = generate_html(df_f)
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown(generate_html(df_f), unsafe_allow_html=True)
 
     # ================= MAIL
     st.markdown(f"""

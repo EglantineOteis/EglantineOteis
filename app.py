@@ -6,6 +6,29 @@ import plotly.express as px
 st.set_page_config(layout="wide")
 
 # =========================
+# CLEAN TEXTE (AJOUT)
+# =========================
+def clean_text(x):
+
+    if pd.isna(x):
+        return ""
+
+    x = str(x)
+
+    # nettoyage Excel / Teams
+    x = x.replace("_x000d_", " ")
+    x = x.replace("\r", " ")
+    x = x.replace("\n", " ")
+
+    # nettoyage symboles
+    x = x.replace("**", "")
+
+    # espaces propres
+    x = " ".join(x.split())
+
+    return x.strip()
+
+# =========================
 # DETECTION COLONNES
 # =========================
 def detect_columns(df):
@@ -33,6 +56,8 @@ def detect_columns(df):
 # PARSE DESCRIPTION
 # =========================
 def parse_description(txt):
+
+    txt = clean_text(txt)
 
     desc, rem, av = "", "", None
 
@@ -159,6 +184,12 @@ if file:
     df["Avancement"] = df["Avancement"].fillna(
         parsed.apply(lambda x: x[2])
     ).fillna(0)
+
+# =========================
+# NETTOYAGE FINAL (AJOUT)
+# =========================
+for col in df.columns:
+    df[col] = df[col].apply(clean_text)
 
     # SUPPRESSION BRUIT
     df = df[~df["Projet"].str.lower().str.contains("compte rendu|tableau", na=False)]

@@ -10,7 +10,7 @@ st.set_page_config(layout="wide")
 # =========================
 # TITRE
 # =========================
-st.title("Suivis des projets")
+st.title("SUIVIS DES PROJETS")
 
 # =========================
 # DETECTION COLONNES
@@ -20,8 +20,8 @@ def detect_columns(df):
     mapping = {
         "projet": None,
         "responsable": None,
-        "avancement": None,
         "description": None,
+        "avancement": None,
         "compartiment": None
     }
 
@@ -29,31 +29,22 @@ def detect_columns(df):
 
         c = str(col).lower().strip()
 
-        # PROJET
         if "tâche" in c or "tache" in c:
             mapping["projet"] = col
 
-        # RESPONSABLE
-        elif "responsable" in c:
+        elif "attribué" in c or "responsable" in c:
             mapping["responsable"] = col
 
-        elif "attribué" in c and mapping["responsable"] is None:
-            mapping["responsable"] = col
-
-        # COMPARTIMENT
-        elif "compartiment" in c:
-            mapping["compartiment"] = col
-
-        # AVANCEMENT
-        elif "progress" in c:
-            mapping["avancement"] = col
-
-        # DESCRIPTION
         elif "description" in c:
             mapping["description"] = col
 
-    return mapping
+        elif "progress" in c:
+            mapping["avancement"] = col
 
+        elif "compartiment" in c:
+            mapping["compartiment"] = col
+
+    return mapping
 
 # =========================
 # NETTOYAGE TEXTE
@@ -67,20 +58,16 @@ def clean_text(txt):
 
     txt = txt.replace("_x000D_", " ")
     txt = txt.replace("_x000d_", " ")
-    txt = txt.replace("**", " ")
-    txt = txt.replace("\\n", " ")
+    txt = txt.replace("**", "")
     txt = txt.replace("\n", " ")
+    txt = txt.replace("\\n", " ")
 
     txt = re.sub(r"\s+", " ", txt)
 
-    txt = txt.replace("Â", "")
-    txt = txt.replace("Ã", "")
-
     return txt.strip()
 
-
 # =========================
-# EXTRACTION DESCRIPTION
+# DESCRIPTION
 # =========================
 def parse_description(txt):
 
@@ -91,7 +78,7 @@ def parse_description(txt):
     equipe = ""
     av = None
 
-    # DESCRIPTION
+    # DESCRIPTIF
     try:
 
         if "Descriptif :" in txt:
@@ -114,36 +101,6 @@ def parse_description(txt):
     except:
         pass
 
-    # EQUIPE PROJET
-    try:
-
-        if "Liste des intervenant :" in txt:
-
-            equipe = txt.split(
-                "Liste des intervenant :", 1
-            )[1]
-
-            stop_words = [
-                "Remarques",
-                "Avancement",
-                "Administration"
-            ]
-
-            for sw in stop_words:
-                if sw in equipe:
-                    equipe = equipe.split(sw)[0]
-
-            equipe = clean_text(equipe)
-
-            if equipe.startswith(":"):
-                equipe = equipe[1:].strip()
-
-            if equipe.startswith("-"):
-                equipe = equipe[1:].strip()
-
-    except:
-        pass
-
     # REMARQUES
     try:
 
@@ -152,7 +109,6 @@ def parse_description(txt):
             rem = txt.split("Remarques :", 1)[1]
 
             stop_words = [
-                "Descriptif",
                 "Administration",
                 "Liste des intervenant",
                 "Avancement"
@@ -163,6 +119,30 @@ def parse_description(txt):
                     rem = rem.split(sw)[0]
 
             rem = clean_text(rem)
+
+    except:
+        pass
+
+    # EQUIPE
+    try:
+
+        if "Liste des intervenant :" in txt:
+
+            equipe = txt.split("Liste des intervenant :", 1)[1]
+
+            stop_words = [
+                "Remarques",
+                "Avancement"
+            ]
+
+            for sw in stop_words:
+                if sw in equipe:
+                    equipe = equipe.split(sw)[0]
+
+            equipe = clean_text(equipe)
+
+            equipe = equipe.replace("•", "")
+            equipe = equipe.replace("-", "")
 
     except:
         pass
@@ -180,7 +160,6 @@ def parse_description(txt):
 
     return desc, rem, equipe, av
 
-
 # =========================
 # RESPONSABLE
 # =========================
@@ -197,13 +176,10 @@ def clean_responsable(x):
     if "," in x:
         x = x.split(",")[0]
 
-    x = x.strip()
-
     if x == "":
         return "Non défini"
 
     return x
-
 
 # =========================
 # STATUT
@@ -218,18 +194,17 @@ def statut(x):
 
     return "Fin"
 
-
 # =========================
-# TABLE HTML
+# TABLEAU HTML
 # =========================
 def generate_html(df):
 
     html = """
     <table style="
         border-collapse:collapse;
-        font-family:Calibri;
-        font-size:13px;
         width:100%;
+        font-family:Calibri;
+        font-size:14px;
     ">
     """
 
@@ -245,14 +220,12 @@ def generate_html(df):
         html += f"""
         <th style="
             border:1px solid #d9d9d9;
-            padding:14px 10px;
-            text-align:center;
-            background:#0A2463;
+            padding:12px;
             color:#F4A300;
-            font-weight:bold;
-            font-size:16px;
+            text-align:center;
+            font-size:15px;
         ">
-            {col}
+        {col}
         </th>
         """
 
@@ -283,12 +256,12 @@ def generate_html(df):
                 html += f"""
                 <td style="
                     border:1px solid #d9d9d9;
-                    padding:6px;
+                    padding:8px;
                     text-align:center;
                     color:{color};
                     font-weight:bold;
                 ">
-                    {val}%
+                {val}%
                 </td>
                 """
 
@@ -297,10 +270,10 @@ def generate_html(df):
                 html += f"""
                 <td style="
                     border:1px solid #d9d9d9;
-                    padding:6px;
+                    padding:8px;
                     vertical-align:top;
                 ">
-                    {val}
+                {val}
                 </td>
                 """
 
@@ -310,9 +283,8 @@ def generate_html(df):
 
     return html
 
-
 # =========================
-# IMPORT EXCEL
+# IMPORT
 # =========================
 file = st.file_uploader(
     "Importer Excel",
@@ -334,30 +306,17 @@ if file:
     mapping = detect_columns(df_raw)
 
     # =========================
-    # VERIFICATION
-    # =========================
-    if mapping["projet"] is None:
-
-        st.error(
-            "Colonne 'Nom de tâche' introuvable"
-        )
-
-        st.stop()
-
-    # =========================
-    # DATAFRAME FINAL
+    # DATAFRAME
     # =========================
     df = pd.DataFrame()
 
     # COMPARTIMENT
     if mapping["compartiment"]:
-
         df["Compartiment"] = (
             df_raw[mapping["compartiment"]]
             .astype(str)
             .apply(clean_text)
         )
-
     else:
         df["Compartiment"] = "Non défini"
 
@@ -379,6 +338,16 @@ if file:
     else:
         df["Responsable"] = "Non défini"
 
+    # DESCRIPTION
+    parsed = (
+        df_raw[mapping["description"]]
+        .apply(parse_description)
+    )
+
+    df["Description"] = parsed.apply(lambda x: x[0])
+    df["Remarques"] = parsed.apply(lambda x: x[1])
+    df["Équipe projet"] = parsed.apply(lambda x: x[2])
+
     # AVANCEMENT
     if mapping["avancement"]:
 
@@ -390,79 +359,11 @@ if file:
     else:
         df["Avancement"] = None
 
-    # DESCRIPTION
-    if mapping["description"]:
+    avancement_desc = parsed.apply(lambda x: x[3])
 
-        parsed = (
-            df_raw[mapping["description"]]
-            .apply(parse_description)
-        )
-
-        df["Description"] = (
-            parsed.apply(lambda x: x[0])
-        )
-
-        df["Remarques"] = (
-            parsed.apply(lambda x: x[1])
-        )
-
-        df["Équipe projet"] = (
-            parsed.apply(lambda x: x[2])
-        )
-
-        avancement_desc = (
-            parsed.apply(lambda x: x[3])
-        )
-
-        df["Avancement"] = (
-            df["Avancement"]
-            .fillna(avancement_desc)
-            .fillna(0)
-        )
-
-    else:
-
-        df["Description"] = ""
-        df["Remarques"] = ""
-        df["Équipe projet"] = ""
-
-        df["Avancement"] = (
-            df["Avancement"]
-            .fillna(0)
-        )
-
-    # =========================
-    # NETTOYAGE
-    # =========================
-    df["Projet"] = df["Projet"].apply(clean_text)
-    df["Description"] = df["Description"].apply(clean_text)
-    df["Remarques"] = df["Remarques"].apply(clean_text)
-    df["Équipe projet"] = df["Équipe projet"].apply(clean_text)
-
-    # SUPPRESSION LIGNES INUTILES
-    df = df[
-        ~df["Projet"]
-        .str.lower()
-        .str.contains(
-            "compte rendu|tableau de gestion",
-            na=False
-        )
-    ]
-
-    # VIDE
-    df = df[df["Projet"] != ""]
-
-    # DOUBLONS
-    df = df.drop_duplicates(
-        subset=["Projet"]
-    )
-
-    # AVANCEMENT
     df["Avancement"] = (
-        pd.to_numeric(
-            df["Avancement"],
-            errors="coerce"
-        )
+        df["Avancement"]
+        .fillna(avancement_desc)
         .fillna(0)
         .round(0)
     )
@@ -474,9 +375,33 @@ if file:
     )
 
     # =========================
+    # NETTOYAGE
+    # =========================
+    df = df[
+        ~df["Projet"]
+        .str.lower()
+        .str.contains(
+            "compte rendu|tableau de gestion",
+            na=False
+        )
+    ]
+
+    df = df.drop_duplicates(
+        subset=["Projet"]
+    )
+
+    # =========================
+    # TRI
+    # =========================
+    df = df.sort_values(
+        by="Compartiment",
+        ascending=True
+    )
+
+    # =========================
     # FILTRES
     # =========================
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
 
@@ -502,45 +427,22 @@ if file:
             )
         )
 
-    with col3:
-
-        proj = st.selectbox(
-            "Projet",
-            ["Tous"] + sorted(
-                df["Projet"]
-                .dropna()
-                .unique()
-                .tolist()
-            )
-        )
-
     # =========================
-    # FILTRES DF
+    # FILTRE DF
     # =========================
     df_f = df.copy()
 
     if compartiment != "Tous":
+
         df_f = df_f[
             df_f["Compartiment"] == compartiment
         ]
 
     if resp != "Tous":
+
         df_f = df_f[
             df_f["Responsable"] == resp
         ]
-
-    if proj != "Tous":
-        df_f = df_f[
-            df_f["Projet"] == proj
-        ]
-
-    # =========================
-    # TRI
-    # =========================
-    df_f = df_f.sort_values(
-        by="Compartiment",
-        ascending=True
-    )
 
     # =========================
     # ORGANISATION COLONNES
@@ -580,13 +482,31 @@ if file:
     # =========================
     # BOUTON COPIER
     # =========================
-    st.button("Copier le tableau")
+    copy_html = f"""
+    <button onclick="
+    navigator.clipboard.writeText(document.getElementById('tableau_mail').innerText);
+    alert('Tableau copié');
+    "
+    style="
+    background:#0A2463;
+    color:white;
+    border:none;
+    padding:10px 18px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:15px;
+    margin-bottom:15px;
+    ">
+    Copier le tableau
+    </button>
 
-    # =========================
-    # TABLEAU HTML
-    # =========================
+    <div id="tableau_mail">
+    {html_table}
+    </div>
+    """
+
     components.html(
-        html_table,
+        copy_html,
         height=1200,
         scrolling=True
     )

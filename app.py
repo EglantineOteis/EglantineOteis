@@ -15,7 +15,6 @@ def detect_columns(df):
     mapping = {
         "projet": None,
         "responsable": None,
-        "equipe": None,
         "avancement": None,
         "description": None,
         "type_projet": None
@@ -25,7 +24,7 @@ def detect_columns(df):
 
         c = str(col).lower().strip()
 
-        # NOM DE TACHE
+        # PROJET
         if "tâche" in c or "tache" in c:
             mapping["projet"] = col
 
@@ -132,6 +131,9 @@ def parse_description(txt):
             equipe = clean_text(equipe)
 
             if equipe.startswith(":"):
+                equipe = equipe[1:].strip()
+
+            if equipe.startswith("-"):
                 equipe = equipe[1:].strip()
 
     except:
@@ -530,18 +532,35 @@ if file:
         ]
 
     # =========================
-    # KPI
+    # TRI
     # =========================
-    c1, c2 = st.columns(2)
-
-    c1.metric(
-        "Projets",
-        len(df_f)
+    df_f = df_f.sort_values(
+        by="Type projet",
+        ascending=True
     )
 
-    c2.metric(
-        "Projets début",
-        len(df_f[df_f["Statut"] == "Début"])
+    # =========================
+    # ORGANISATION COLONNES
+    # =========================
+    df_f = df_f[
+        [
+            "Type projet",
+            "Projet",
+            "Responsable",
+            "Avancement",
+            "Description",
+            "Remarques",
+            "Équipe projet",
+            "Statut"
+        ]
+    ]
+
+    # =========================
+    # KPI
+    # =========================
+    st.metric(
+        "Projets",
+        len(df_f)
     )
 
     # =========================
@@ -550,33 +569,37 @@ if file:
     st.subheader("Mail prêt à envoyer")
 
     st.markdown("""
-    <a href="outlook:">
-        <button style="
-            background:#0A2463;
-            color:white;
-            border:none;
-            padding:10px 16px;
-            border-radius:5px;
-            cursor:pointer;
-        ">
-        Ouvrir Outlook
-        </button>
-    </a>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
     Copier le tableau ci-dessous puis coller directement dans Outlook.
     """)
 
     html_table = generate_html(df_f)
 
-    st.download_button(
-        label="Télécharger le tableau HTML",
-        data=html_table,
-        file_name="tableau_projets.html",
-        mime="text/html"
-    )
+    # =========================
+    # BOUTON COPIER
+    # =========================
+    copy_code = f"""
+    <button onclick="
+    navigator.clipboard.writeText(`{html_table}`);
+    alert('Tableau copié');
+    "
+    style="
+    background:#0A2463;
+    color:white;
+    border:none;
+    padding:10px 16px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:15px;
+    ">
+    Copier le tableau
+    </button>
+    """
 
+    components.html(copy_code, height=60)
+
+    # =========================
+    # TABLEAU HTML
+    # =========================
     components.html(
         html_table,
         height=1200,

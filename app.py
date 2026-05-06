@@ -527,13 +527,49 @@ if file:
     # GRAPHIQUES
     # =========================
     st.subheader("Graphiques")
-
-    fig = px.pie(
+    
+    # -------------------------
+    # GRAPHIQUE STATUT
+    # -------------------------
+    fig_statut = px.pie(
         df_f,
-        names="Statut"
+        names="Statut",
+        title="Répartition des projets par statut"
     )
-
+    
     st.plotly_chart(
-        fig,
+        fig_statut,
+        use_container_width=True
+    )
+    
+    # -------------------------
+    # GRAPHIQUE RESPONSABLE
+    # -------------------------
+    df_resp = (
+        df_f["Responsable"]
+        .value_counts()
+        .reset_index()
+    )
+    
+    df_resp.columns = [
+        "Responsable",
+        "Nombre"
+    ]
+    
+    fig_resp = px.bar(
+        df_resp,
+        x="Responsable",
+        y="Nombre",
+        title="Répartition des projets par responsable",
+        text="Nombre"
+    )
+    
+    fig_resp.update_layout(
+        xaxis_title="Responsable",
+        yaxis_title="Nombre de projets"
+    )
+    
+    st.plotly_chart(
+        fig_resp,
         use_container_width=True
     )

@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import re
+import streamlit.components.v1 as components
 
 st.set_page_config(layout="wide")
 
@@ -530,7 +531,8 @@ if file:
 
     html_table = generate_html(df_f)
 
-    st.markdown(
-        html_table,
-        unsafe_allow_html=True
-    )
+    st.components.v1.html(
+    html_table,
+    height=1200,
+    scrolling=True
+)

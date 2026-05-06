@@ -78,7 +78,7 @@ def parse_description(txt):
     equipe = ""
     av = None
 
-    # DESCRIPTIF
+    # DESCRIPTION
     try:
 
         if "Descriptif :" in txt:
@@ -123,7 +123,7 @@ def parse_description(txt):
     except:
         pass
 
-    # EQUIPE
+    # EQUIPE PROJET
     try:
 
         if "Liste des intervenant :" in txt:
@@ -284,7 +284,7 @@ def generate_html(df):
     return html
 
 # =========================
-# IMPORT
+# IMPORT EXCEL
 # =========================
 file = st.file_uploader(
     "Importer Excel",
@@ -294,7 +294,7 @@ file = st.file_uploader(
 if file:
 
     # =========================
-    # LECTURE EXCEL
+    # LECTURE
     # =========================
     df_raw = pd.read_excel(file)
 
@@ -312,12 +312,15 @@ if file:
 
     # COMPARTIMENT
     if mapping["compartiment"]:
+
         df["Compartiment"] = (
             df_raw[mapping["compartiment"]]
             .astype(str)
             .apply(clean_text)
         )
+
     else:
+
         df["Compartiment"] = "Non défini"
 
     # PROJET
@@ -336,6 +339,7 @@ if file:
         )
 
     else:
+
         df["Responsable"] = "Non défini"
 
     # DESCRIPTION
@@ -357,6 +361,7 @@ if file:
         )
 
     else:
+
         df["Avancement"] = None
 
     avancement_desc = parsed.apply(lambda x: x[3])
@@ -474,17 +479,24 @@ if file:
     st.subheader("Mail prêt à envoyer")
 
     st.markdown("""
-    Sélectionnez le tableau ci-dessous puis faites Ctrl+C avant de le coller dans Outlook.
+    Cliquez sur le bouton puis collez directement dans Outlook avec Ctrl+V.
     """)
 
     html_table = generate_html(df_f)
 
     # =========================
-    # BOUTON COPIER
+    # COPIE HTML
     # =========================
     copy_html = f"""
     <button onclick="
-    navigator.clipboard.writeText(document.getElementById('tableau_mail').innerText);
+    navigator.clipboard.write([
+    new ClipboardItem({{
+    'text/html': new Blob(
+    [document.getElementById('tableau_mail').innerHTML],
+    {{type: 'text/html'}}
+    )
+    }})
+    ]);
     alert('Tableau copié');
     "
     style="

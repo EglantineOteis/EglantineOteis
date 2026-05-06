@@ -15,15 +15,17 @@ def detect_columns(df):
     mapping = {
         "projet": None,
         "responsable": None,
+        "equipe": None,
         "avancement": None,
-        "description": None
+        "description": None,
+        "type_projet": None
     }
 
     for col in df.columns:
 
         c = str(col).lower().strip()
 
-        # NOM DE TACHE = PROJET
+        # NOM DE TACHE
         if "tâche" in c or "tache" in c:
             mapping["projet"] = col
 
@@ -33,6 +35,10 @@ def detect_columns(df):
 
         elif "attribué" in c and mapping["responsable"] is None:
             mapping["responsable"] = col
+
+        # TYPE PROJET
+        elif "compartiment" in c:
+            mapping["type_projet"] = col
 
         # AVANCEMENT
         elif "progress" in c:
@@ -55,17 +61,14 @@ def clean_text(txt):
 
     txt = str(txt)
 
-    # BRUITS EXCEL
     txt = txt.replace("_x000D_", " ")
     txt = txt.replace("_x000d_", " ")
     txt = txt.replace("**", " ")
     txt = txt.replace("\\n", " ")
     txt = txt.replace("\n", " ")
 
-    # ESPACES
     txt = re.sub(r"\s+", " ", txt)
 
-    # CARACTERES PARASITES
     txt = txt.replace("Â", "")
     txt = txt.replace("Ã", "")
 
@@ -81,11 +84,12 @@ def parse_description(txt):
 
     desc = ""
     rem = ""
-    av = None
     equipe = ""
+    av = None
 
     # DESCRIPTION
     try:
+
         if "Descriptif :" in txt:
 
             desc = txt.split("Descriptif :", 1)[1]
@@ -106,8 +110,36 @@ def parse_description(txt):
     except:
         pass
 
+    # EQUIPE PROJET
+    try:
+
+        if "Liste des intervenant :" in txt:
+
+            equipe = txt.split(
+                "Liste des intervenant :", 1
+            )[1]
+
+            stop_words = [
+                "Remarques",
+                "Avancement",
+                "Administration"
+            ]
+
+            for sw in stop_words:
+                if sw in equipe:
+                    equipe = equipe.split(sw)[0]
+
+            equipe = clean_text(equipe)
+
+            if equipe.startswith(":"):
+                equipe = equipe[1:].strip()
+
+    except:
+        pass
+
     # REMARQUES
     try:
+
         if "Remarques :" in txt:
 
             rem = txt.split("Remarques :", 1)[1]
@@ -128,34 +160,6 @@ def parse_description(txt):
     except:
         pass
 
-    # EQUIPE PROJET
-    try:
-
-        if "Liste des intervenant" in txt:
-
-            equipe = txt.split("Liste des intervenant", 1)[1]
-
-            stop_words = [
-                "Remarques",
-                "Avancement",
-                "Administration"
-            ]
-
-            for sw in stop_words:
-                if sw in equipe:
-                    equipe = equipe.split(sw)[0]
-
-            equipe = clean_text(equipe)
-
-            # SUPPRESSION PUCES ET CARACTERES
-            equipe = equipe.replace("•", "")
-            equipe = equipe.replace("-", "")
-            equipe = equipe.replace(":", "")
-            equipe = equipe.strip()
-
-    except:
-        pass
-
     # AVANCEMENT
     try:
 
@@ -167,7 +171,7 @@ def parse_description(txt):
     except:
         pass
 
-    return desc, rem, av, equipe
+    return desc, rem, equipe, av
 
 
 # =========================
@@ -209,7 +213,7 @@ def statut(x):
 
 
 # =========================
-# TABLE HTML PRO
+# TABLE HTML
 # =========================
 def generate_html(df):
 
@@ -226,8 +230,6 @@ def generate_html(df):
     html += """
     <tr style="
         background:#0A2463;
-        color:white;
-        font-weight:bold;
     ">
     """
 
@@ -242,7 +244,6 @@ def generate_html(df):
             color:#F4A300;
             font-weight:bold;
             font-size:16px;
-            font-family:Calibri;
         ">
             {col}
         </th>
@@ -261,7 +262,7 @@ def generate_html(df):
 
             val = clean_text(row[col])
 
-            # AVANCEMENT COLORÉ
+            # AVANCEMENT
             if col == "Avancement":
 
                 color = "#d62828"
@@ -280,7 +281,7 @@ def generate_html(df):
                     color:{color};
                     font-weight:bold;
                 ">
-                {val}%
+                    {val}%
                 </td>
                 """
 
@@ -292,7 +293,7 @@ def generate_html(df):
                     padding:6px;
                     vertical-align:top;
                 ">
-                {val}
+                    {val}
                 </td>
                 """
 
@@ -326,8 +327,6 @@ if file:
     ]
 
     mapping = detect_columns(df_raw)
-
-    st.write("Colonnes détectées :", mapping)
 
     # =========================
     # VERIFICATION
@@ -363,6 +362,18 @@ if file:
     else:
         df["Responsable"] = "Non défini"
 
+    # TYPE PROJET
+    if mapping["type_projet"]:
+
+        df["Type projet"] = (
+            df_raw[mapping["type_projet"]]
+            .astype(str)
+            .apply(clean_text)
+        )
+
+    else:
+        df["Type projet"] = "Non défini"
+
     # AVANCEMENT
     if mapping["avancement"]:
 
@@ -391,14 +402,13 @@ if file:
         )
 
         df["Équipe projet"] = (
-            parsed.apply(lambda x: x[3])
-        )
-
-        avancement_desc = (
             parsed.apply(lambda x: x[2])
         )
 
-        # COMPLETE AVANCEMENT
+        avancement_desc = (
+            parsed.apply(lambda x: x[3])
+        )
+
         df["Avancement"] = (
             df["Avancement"]
             .fillna(avancement_desc)
@@ -417,7 +427,7 @@ if file:
         )
 
     # =========================
-    # NETTOYAGE FINAL
+    # NETTOYAGE
     # =========================
     df["Projet"] = df["Projet"].apply(clean_text)
     df["Description"] = df["Description"].apply(clean_text)
@@ -458,23 +468,10 @@ if file:
         .apply(statut)
     )
 
-    # ORDRE COLONNES
-    df = df[
-        [
-            "Projet",
-            "Responsable",
-            "Équipe projet",
-            "Avancement",
-            "Description",
-            "Remarques",
-            "Statut"
-        ]
-    ]
-
     # =========================
     # FILTRES
     # =========================
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
 
@@ -500,7 +497,21 @@ if file:
             )
         )
 
-    # FILTRE
+    with col3:
+
+        type_proj = st.selectbox(
+            "Type projet",
+            ["Tous"] + sorted(
+                df["Type projet"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+        )
+
+    # =========================
+    # FILTRES DF
+    # =========================
     df_f = df.copy()
 
     if resp != "Tous":
@@ -513,10 +524,15 @@ if file:
             df_f["Projet"] == proj
         ]
 
+    if type_proj != "Tous":
+        df_f = df_f[
+            df_f["Type projet"] == type_proj
+        ]
+
     # =========================
     # KPI
     # =========================
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
 
     c1.metric(
         "Projets",
@@ -524,47 +540,17 @@ if file:
     )
 
     c2.metric(
-        "Avancement moyen",
-        f"{df_f['Avancement'].mean():.0f}%"
-    )
-
-    c3.metric(
         "Projets début",
         len(df_f[df_f["Statut"] == "Début"])
     )
 
     # =========================
-    # GRAPHIQUES
-    # =========================
-    st.subheader("Graphiques")
-
-    fig = px.pie(
-        df_f,
-        names="Statut"
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-    # =========================
-    # TABLEAU
-    # =========================
-    st.subheader("Tableau structuré")
-
-    st.dataframe(
-        df_f,
-        use_container_width=True
-    )
-
-    # =========================
-    # TABLEAU MAIL
+    # MAIL
     # =========================
     st.subheader("Mail prêt à envoyer")
 
     st.markdown("""
-    <a href="https://outlook.office.com/mail/deeplink/compose" target="_blank">
+    <a href="outlook:">
         <button style="
             background:#0A2463;
             color:white;
@@ -584,8 +570,30 @@ if file:
 
     html_table = generate_html(df_f)
 
+    st.download_button(
+        label="Télécharger le tableau HTML",
+        data=html_table,
+        file_name="tableau_projets.html",
+        mime="text/html"
+    )
+
     components.html(
         html_table,
         height=1200,
         scrolling=True
+    )
+
+    # =========================
+    # GRAPHIQUES
+    # =========================
+    st.subheader("Graphiques")
+
+    fig = px.pie(
+        df_f,
+        names="Statut"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
     )

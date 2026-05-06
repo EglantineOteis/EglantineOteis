@@ -147,8 +147,11 @@ def parse_description(txt):
 
             equipe = clean_text(equipe)
 
+            # SUPPRESSION PUCES ET CARACTERES
             equipe = equipe.replace("•", "")
             equipe = equipe.replace("-", "")
+            equipe = equipe.replace(":", "")
+            equipe = equipe.strip()
 
     except:
         pass

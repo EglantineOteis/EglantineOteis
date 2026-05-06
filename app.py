@@ -15,7 +15,6 @@ def detect_columns(df):
     mapping = {
         "projet": None,
         "responsable": None,
-        "equipe": None,
         "avancement": None,
         "description": None
     }
@@ -34,16 +33,6 @@ def detect_columns(df):
 
         elif "attribué" in c and mapping["responsable"] is None:
             mapping["responsable"] = col
-
-        # EQUIPE / INTERVENANTS
-        elif (
-            "intervenant" in c
-            or "équipe" in c
-            or "equipe" in c
-            or "participant" in c
-            or "collaborateur" in c
-        ):
-            mapping["equipe"] = col
 
         # AVANCEMENT
         elif "progress" in c:
@@ -66,17 +55,17 @@ def clean_text(txt):
 
     txt = str(txt)
 
-    # SUPPRESSION BRUIT EXCEL
+    # BRUITS EXCEL
     txt = txt.replace("_x000D_", " ")
     txt = txt.replace("_x000d_", " ")
     txt = txt.replace("**", " ")
     txt = txt.replace("\\n", " ")
     txt = txt.replace("\n", " ")
 
-    # SUPPRESSION ESPACES MULTIPLES
+    # ESPACES
     txt = re.sub(r"\s+", " ", txt)
 
-    # SUPPRESSION CARACTERES INVISIBLES
+    # CARACTERES PARASITES
     txt = txt.replace("Â", "")
     txt = txt.replace("Ã", "")
 
@@ -93,6 +82,7 @@ def parse_description(txt):
     desc = ""
     rem = ""
     av = None
+    equipe = ""
 
     # DESCRIPTION
     try:
@@ -138,6 +128,31 @@ def parse_description(txt):
     except:
         pass
 
+    # EQUIPE PROJET
+    try:
+
+        if "Liste des intervenant" in txt:
+
+            equipe = txt.split("Liste des intervenant", 1)[1]
+
+            stop_words = [
+                "Remarques",
+                "Avancement",
+                "Administration"
+            ]
+
+            for sw in stop_words:
+                if sw in equipe:
+                    equipe = equipe.split(sw)[0]
+
+            equipe = clean_text(equipe)
+
+            equipe = equipe.replace("•", "")
+            equipe = equipe.replace("-", "")
+
+    except:
+        pass
+
     # AVANCEMENT
     try:
 
@@ -149,7 +164,7 @@ def parse_description(txt):
     except:
         pass
 
-    return desc, rem, av
+    return desc, rem, av, equipe
 
 
 # =========================
@@ -174,22 +189,6 @@ def clean_responsable(x):
         return "Non défini"
 
     return x
-
-
-# =========================
-# EQUIPE
-# =========================
-def clean_equipe(x):
-
-    if pd.isna(x):
-        return ""
-
-    x = clean_text(x)
-
-    x = x.replace(";", ", ")
-    x = x.replace("|", ", ")
-
-    return x.strip()
 
 
 # =========================
@@ -325,10 +324,11 @@ if file:
 
     mapping = detect_columns(df_raw)
 
-    # DEBUG
     st.write("Colonnes détectées :", mapping)
 
+    # =========================
     # VERIFICATION
+    # =========================
     if mapping["projet"] is None:
 
         st.error(
@@ -360,17 +360,6 @@ if file:
     else:
         df["Responsable"] = "Non défini"
 
-    # EQUIPE
-    if mapping["equipe"]:
-
-        df["Équipe projet"] = (
-            df_raw[mapping["equipe"]]
-            .apply(clean_equipe)
-        )
-
-    else:
-        df["Équipe projet"] = ""
-
     # AVANCEMENT
     if mapping["avancement"]:
 
@@ -398,6 +387,10 @@ if file:
             parsed.apply(lambda x: x[1])
         )
 
+        df["Équipe projet"] = (
+            parsed.apply(lambda x: x[3])
+        )
+
         avancement_desc = (
             parsed.apply(lambda x: x[2])
         )
@@ -413,6 +406,7 @@ if file:
 
         df["Description"] = ""
         df["Remarques"] = ""
+        df["Équipe projet"] = ""
 
         df["Avancement"] = (
             df["Avancement"]
@@ -425,6 +419,7 @@ if file:
     df["Projet"] = df["Projet"].apply(clean_text)
     df["Description"] = df["Description"].apply(clean_text)
     df["Remarques"] = df["Remarques"].apply(clean_text)
+    df["Équipe projet"] = df["Équipe projet"].apply(clean_text)
 
     # SUPPRESSION LIGNES INUTILES
     df = df[

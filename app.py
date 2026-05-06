@@ -203,21 +203,25 @@ def generate_html(df):
     """
 
     for col in df.columns:
-
+    
         html += f"""
         <th style="
             border:1px solid #d9d9d9;
             padding:14px 10px;
             text-align:center;
-            color:#F4A300;
-            font-weight:bold;
-            font-size:16px;
-            font-family:Calibri;
+            background:#0A2463;
         ">
-        {col}
+            <span style="
+                color:#F4A300;
+                font-weight:bold;
+                font-size:16px;
+                font-family:Calibri;
+            ">
+                {col}
+            </span>
         </th>
         """
-
+    
     html += "</tr>"
 
     # LIGNES

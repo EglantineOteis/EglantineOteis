@@ -207,9 +207,12 @@ def generate_html(df):
         html += f"""
         <th style="
             border:1px solid #d9d9d9;
-            padding:8px;
+            padding:14px 10px;
             text-align:center;
-            color:white;
+            color:#F4A300;
+            font-weight:bold;
+            font-size:16px;
+            font-family:Calibri;
         ">
         {col}
         </th>

@@ -8,6 +8,11 @@ import streamlit.components.v1 as components
 st.set_page_config(layout="wide")
 
 # =========================
+# TITRE
+# =========================
+st.title("Suivis des projets")
+
+# =========================
 # DETECTION COLONNES
 # =========================
 def detect_columns(df):
@@ -17,7 +22,7 @@ def detect_columns(df):
         "responsable": None,
         "avancement": None,
         "description": None,
-        "type_projet": None
+        "compartiment": None
     }
 
     for col in df.columns:
@@ -35,9 +40,9 @@ def detect_columns(df):
         elif "attribué" in c and mapping["responsable"] is None:
             mapping["responsable"] = col
 
-        # TYPE PROJET
+        # COMPARTIMENT
         elif "compartiment" in c:
-            mapping["type_projet"] = col
+            mapping["compartiment"] = col
 
         # AVANCEMENT
         elif "progress" in c:
@@ -307,10 +312,8 @@ def generate_html(df):
 
 
 # =========================
-# UI
+# IMPORT EXCEL
 # =========================
-st.title("Suivi des projets")
-
 file = st.file_uploader(
     "Importer Excel",
     type=["xlsx"]
@@ -346,6 +349,18 @@ if file:
     # =========================
     df = pd.DataFrame()
 
+    # COMPARTIMENT
+    if mapping["compartiment"]:
+
+        df["Compartiment"] = (
+            df_raw[mapping["compartiment"]]
+            .astype(str)
+            .apply(clean_text)
+        )
+
+    else:
+        df["Compartiment"] = "Non défini"
+
     # PROJET
     df["Projet"] = (
         df_raw[mapping["projet"]]
@@ -363,18 +378,6 @@ if file:
 
     else:
         df["Responsable"] = "Non défini"
-
-    # TYPE PROJET
-    if mapping["type_projet"]:
-
-        df["Type projet"] = (
-            df_raw[mapping["type_projet"]]
-            .astype(str)
-            .apply(clean_text)
-        )
-
-    else:
-        df["Type projet"] = "Non défini"
 
     # AVANCEMENT
     if mapping["avancement"]:
@@ -477,6 +480,18 @@ if file:
 
     with col1:
 
+        compartiment = st.selectbox(
+            "Compartiment",
+            ["Tous"] + sorted(
+                df["Compartiment"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+        )
+
+    with col2:
+
         resp = st.selectbox(
             "Responsable",
             ["Tous"] + sorted(
@@ -487,7 +502,7 @@ if file:
             )
         )
 
-    with col2:
+    with col3:
 
         proj = st.selectbox(
             "Projet",
@@ -499,22 +514,15 @@ if file:
             )
         )
 
-    with col3:
-
-        type_proj = st.selectbox(
-            "Type projet",
-            ["Tous"] + sorted(
-                df["Type projet"]
-                .dropna()
-                .unique()
-                .tolist()
-            )
-        )
-
     # =========================
     # FILTRES DF
     # =========================
     df_f = df.copy()
+
+    if compartiment != "Tous":
+        df_f = df_f[
+            df_f["Compartiment"] == compartiment
+        ]
 
     if resp != "Tous":
         df_f = df_f[
@@ -526,16 +534,11 @@ if file:
             df_f["Projet"] == proj
         ]
 
-    if type_proj != "Tous":
-        df_f = df_f[
-            df_f["Type projet"] == type_proj
-        ]
-
     # =========================
     # TRI
     # =========================
     df_f = df_f.sort_values(
-        by="Type projet",
+        by="Compartiment",
         ascending=True
     )
 
@@ -544,7 +547,7 @@ if file:
     # =========================
     df_f = df_f[
         [
-            "Type projet",
+            "Compartiment",
             "Projet",
             "Responsable",
             "Avancement",
@@ -569,7 +572,7 @@ if file:
     st.subheader("Mail prêt à envoyer")
 
     st.markdown("""
-    Copier le tableau ci-dessous puis coller directement dans Outlook.
+    Sélectionnez le tableau ci-dessous puis faites Ctrl+C avant de le coller dans Outlook.
     """)
 
     html_table = generate_html(df_f)
@@ -577,25 +580,7 @@ if file:
     # =========================
     # BOUTON COPIER
     # =========================
-    copy_code = f"""
-    <button onclick="
-    navigator.clipboard.writeText(`{html_table}`);
-    alert('Tableau copié');
-    "
-    style="
-    background:#0A2463;
-    color:white;
-    border:none;
-    padding:10px 16px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:15px;
-    ">
-    Copier le tableau
-    </button>
-    """
-
-    components.html(copy_code, height=60)
+    st.button("Copier le tableau")
 
     # =========================
     # TABLEAU HTML

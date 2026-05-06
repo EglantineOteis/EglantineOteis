@@ -2,28 +2,42 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import re
 
 st.set_page_config(layout="wide")
-
 
 # =========================
 # DETECTION COLONNES
 # =========================
 def detect_columns(df):
 
-    mapping = {"projet":None,"responsable":None,"avancement":None,"description":None}
+    mapping = {
+        "projet": None,
+        "responsable": None,
+        "avancement": None,
+        "description": None
+    }
 
     for col in df.columns:
-        c = col.lower()
 
-        if "tâche" in c:
+        c = str(col).lower().strip()
+
+        # NOM DE TACHE = PROJET
+        if "tâche" in c or "tache" in c:
             mapping["projet"] = col
+
+        # RESPONSABLE
         elif "responsable" in c:
             mapping["responsable"] = col
+
         elif "attribué" in c and mapping["responsable"] is None:
             mapping["responsable"] = col
+
+        # AVANCEMENT
         elif "progress" in c:
             mapping["avancement"] = col
+
+        # DESCRIPTION
         elif "description" in c:
             mapping["description"] = col
 
@@ -31,30 +45,96 @@ def detect_columns(df):
 
 
 # =========================
-# PARSE DESCRIPTION
+# NETTOYAGE TEXTE
+# =========================
+def clean_text(txt):
+
+    if pd.isna(txt):
+        return ""
+
+    txt = str(txt)
+
+    # SUPPRESSION BRUIT EXCEL
+    txt = txt.replace("_x000D_", " ")
+    txt = txt.replace("_x000d_", " ")
+    txt = txt.replace("**", " ")
+    txt = txt.replace("\\n", " ")
+    txt = txt.replace("\n", " ")
+
+    # SUPPRESSION ESPACES MULTIPLES
+    txt = re.sub(r"\s+", " ", txt)
+
+    # SUPPRESSION CARACTERES INVISIBLES
+    txt = txt.replace("Â", "")
+    txt = txt.replace("Ã", "")
+
+    return txt.strip()
+
+
+# =========================
+# EXTRACTION DESCRIPTION
 # =========================
 def parse_description(txt):
 
-    desc, rem, av = "", "", None
+    txt = clean_text(txt)
 
-    if not isinstance(txt, str):
-        return desc, rem, av
+    desc = ""
+    rem = ""
+    av = None
 
+    # DESCRIPTION
     try:
-        if "Descriptif" in txt:
-            desc = txt.split("Descriptif :",1)[1].split("Administration")[0].strip()
-    except: pass
+        if "Descriptif :" in txt:
+            desc = txt.split("Descriptif :", 1)[1]
 
-    try:
-        if "Remarques" in txt:
-            rem = txt.split("Remarques :",1)[1].strip()
-    except: pass
+            stop_words = [
+                "Administration",
+                "Liste des intervenant",
+                "Remarques",
+                "Avancement"
+            ]
 
+            for sw in stop_words:
+                if sw in desc:
+                    desc = desc.split(sw)[0]
+
+            desc = clean_text(desc)
+
+    except:
+        pass
+
+    # REMARQUES
     try:
-        if "Avancement" in txt:
-            val = txt.split("Avancement :",1)[1].split("\n")[0]
-            av = float(val.replace("%","").strip())
-    except: pass
+        if "Remarques :" in txt:
+
+            rem = txt.split("Remarques :", 1)[1]
+
+            stop_words = [
+                "Descriptif",
+                "Administration",
+                "Liste des intervenant",
+                "Avancement"
+            ]
+
+            for sw in stop_words:
+                if sw in rem:
+                    rem = rem.split(sw)[0]
+
+            rem = clean_text(rem)
+
+    except:
+        pass
+
+    # AVANCEMENT
+    try:
+
+        match = re.search(r"(\d+)\s*%", txt)
+
+        if match:
+            av = float(match.group(1))
+
+    except:
+        pass
 
     return desc, rem, av
 
@@ -67,54 +147,120 @@ def clean_responsable(x):
     if pd.isna(x):
         return "Non défini"
 
-    x = str(x)
+    x = clean_text(x)
 
+    # LISTE MULTIPLE
     if ";" in x:
-        return x.split(";")[0].strip()
+        x = x.split(";")[0]
 
     if "," in x:
-        return x.split(",")[0].strip()
+        x = x.split(",")[0]
 
-    return x.strip()
+    x = x.strip()
+
+    if x == "":
+        return "Non défini"
+
+    return x
 
 
 # =========================
-# HTML TABLE EXCEL STYLE
+# STATUT
+# =========================
+def statut(x):
+
+    if x <= 30:
+        return "Début"
+
+    elif x <= 70:
+        return "Milieu"
+
+    return "Fin"
+
+
+# =========================
+# TABLE HTML PRO
 # =========================
 def generate_html(df):
 
     html = """
-    <table style="border-collapse:collapse;font-family:Calibri;font-size:13px;width:100%">
+    <table style="
+        border-collapse:collapse;
+        font-family:Calibri;
+        font-size:13px;
+        width:100%;
+    ">
     """
 
     # HEADER
-    html += "<tr style='background:#0A2463;color:white'>"
+    html += """
+    <tr style="
+        background:#0A2463;
+        color:white;
+        font-weight:bold;
+    ">
+    """
+
     for col in df.columns:
-        html += f"<th style='padding:8px;border:1px solid #d9d9d9'>{col}</th>"
+
+        html += f"""
+        <th style="
+            border:1px solid #d9d9d9;
+            padding:8px;
+            text-align:center;
+            color:white;
+        ">
+        {col}
+        </th>
+        """
+
     html += "</tr>"
 
     # LIGNES
     for i, (_, row) in enumerate(df.iterrows()):
+
         bg = "#ffffff" if i % 2 == 0 else "#f4f6fa"
+
         html += f"<tr style='background:{bg}'>"
 
         for col in df.columns:
 
-            val = str(row[col]).replace("\n","<br>")
+            val = clean_text(row[col])
 
+            # AVANCEMENT COLORÉ
             if col == "Avancement":
 
-                if row["Statut"] == "Début":
-                    color = "#d62828"
-                elif row["Statut"] == "Milieu":
+                color = "#d62828"
+
+                if row["Statut"] == "Milieu":
                     color = "#f77f00"
-                else:
+
+                elif row["Statut"] == "Fin":
                     color = "#2a9d8f"
 
-                html += f"<td style='padding:6px;border:1px solid #ddd;color:{color};font-weight:bold;text-align:center'>{val}%</td>"
+                html += f"""
+                <td style="
+                    border:1px solid #d9d9d9;
+                    padding:6px;
+                    text-align:center;
+                    color:{color};
+                    font-weight:bold;
+                ">
+                {val}%
+                </td>
+                """
 
             else:
-                html += f"<td style='padding:6px;border:1px solid #ddd'>{val}</td>"
+
+                html += f"""
+                <td style="
+                    border:1px solid #d9d9d9;
+                    padding:6px;
+                    vertical-align:top;
+                ">
+                {val}
+                </td>
+                """
 
         html += "</tr>"
 
@@ -126,99 +272,265 @@ def generate_html(df):
 # =========================
 # UI
 # =========================
-st.title("📊 Suivi des projets")
+st.title("Suivi des projets")
 
-file = st.file_uploader("📂 Importer Excel", type=["xlsx"])
+file = st.file_uploader(
+    "Importer Excel",
+    type=["xlsx"]
+)
 
 if file:
 
+    # =========================
+    # LECTURE EXCEL
+    # =========================
     df_raw = pd.read_excel(file)
-    df_raw.columns = df_raw.columns.str.lower().str.strip()
+
+    df_raw.columns = [
+        str(c).lower().strip()
+        for c in df_raw.columns
+    ]
 
     mapping = detect_columns(df_raw)
 
+    # DEBUG
+    st.write("Colonnes détectées :", mapping)
+
+    # VERIFICATION
     if mapping["projet"] is None:
-        st.error("❌ colonne 'Nom de tâche' introuvable")
+
+        st.error(
+            "Colonne 'Nom de tâche' introuvable"
+        )
+
         st.stop()
 
+    # =========================
+    # DATAFRAME FINAL
+    # =========================
     df = pd.DataFrame()
 
-    df["Projet"] = df_raw[mapping["projet"]]
-
-    df["Responsable"] = df_raw[mapping["responsable"]].apply(clean_responsable)
-
-    df["Avancement"] = pd.to_numeric(
-        df_raw[mapping["avancement"]],
-        errors="coerce"
+    # PROJET
+    df["Projet"] = (
+        df_raw[mapping["projet"]]
+        .astype(str)
+        .apply(clean_text)
     )
 
-    parsed = df_raw[mapping["description"]].apply(parse_description)
+    # RESPONSABLE
+    if mapping["responsable"]:
 
-    df["Description"] = parsed.apply(lambda x: x[0])
-    df["Remarques"] = parsed.apply(lambda x: x[1])
+        df["Responsable"] = (
+            df_raw[mapping["responsable"]]
+            .apply(clean_responsable)
+        )
 
-    df["Avancement"] = df["Avancement"].fillna(
-        parsed.apply(lambda x: x[2])
-    ).fillna(0)
+    else:
+        df["Responsable"] = "Non défini"
 
-    # SUPPRESSION BRUIT
-    df = df[~df["Projet"].str.lower().str.contains("compte rendu|tableau", na=False)]
-    df = df.drop_duplicates(subset=["Projet"])
+    # AVANCEMENT
+    if mapping["avancement"]:
+
+        df["Avancement"] = pd.to_numeric(
+            df_raw[mapping["avancement"]],
+            errors="coerce"
+        )
+
+    else:
+        df["Avancement"] = None
+
+    # DESCRIPTION
+    if mapping["description"]:
+
+        parsed = (
+            df_raw[mapping["description"]]
+            .apply(parse_description)
+        )
+
+        df["Description"] = (
+            parsed.apply(lambda x: x[0])
+        )
+
+        df["Remarques"] = (
+            parsed.apply(lambda x: x[1])
+        )
+
+        avancement_desc = (
+            parsed.apply(lambda x: x[2])
+        )
+
+        # COMPLETE AVANCEMENT
+        df["Avancement"] = (
+            df["Avancement"]
+            .fillna(avancement_desc)
+            .fillna(0)
+        )
+
+    else:
+
+        df["Description"] = ""
+        df["Remarques"] = ""
+
+        df["Avancement"] = (
+            df["Avancement"]
+            .fillna(0)
+        )
+
+    # =========================
+    # NETTOYAGE FINAL
+    # =========================
+    df["Projet"] = df["Projet"].apply(clean_text)
+    df["Description"] = df["Description"].apply(clean_text)
+    df["Remarques"] = df["Remarques"].apply(clean_text)
+
+    # SUPPRESSION LIGNES INUTILES
+    df = df[
+        ~df["Projet"]
+        .str.lower()
+        .str.contains(
+            "compte rendu|tableau de gestion",
+            na=False
+        )
+    ]
+
+    # VIDE
+    df = df[df["Projet"] != ""]
+
+    # DOUBLONS
+    df = df.drop_duplicates(
+        subset=["Projet"]
+    )
+
+    # AVANCEMENT
+    df["Avancement"] = (
+        pd.to_numeric(
+            df["Avancement"],
+            errors="coerce"
+        )
+        .fillna(0)
+        .round(0)
+    )
 
     # STATUT
-    def statut(x):
-        if x <= 30:
-            return "Début"
-        elif x <= 70:
-            return "Milieu"
-        else:
-            return "Fin"
+    df["Statut"] = (
+        df["Avancement"]
+        .apply(statut)
+    )
 
-    df["Statut"] = df["Avancement"].apply(statut)
-
+    # =========================
     # FILTRES
+    # =========================
     col1, col2 = st.columns(2)
 
-    resp = col1.selectbox("👤 Responsable", ["Tous"] + sorted(df["Responsable"].unique()))
-    proj = col2.selectbox("📁 Projet", ["Tous"] + sorted(df["Projet"].unique()))
+    with col1:
 
+        resp = st.selectbox(
+            "Responsable",
+            ["Tous"] + sorted(
+                df["Responsable"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+        )
+
+    with col2:
+
+        proj = st.selectbox(
+            "Projet",
+            ["Tous"] + sorted(
+                df["Projet"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+        )
+
+    # FILTRE
     df_f = df.copy()
 
     if resp != "Tous":
-        df_f = df_f[df_f["Responsable"] == resp]
+        df_f = df_f[
+            df_f["Responsable"] == resp
+        ]
 
     if proj != "Tous":
-        df_f = df_f[df_f["Projet"] == proj]
+        df_f = df_f[
+            df_f["Projet"] == proj
+        ]
 
+    # =========================
     # KPI
+    # =========================
     c1, c2, c3 = st.columns(3)
 
-    c1.metric("Projets", len(df_f))
-    c2.metric("Avancement", f"{df_f['Avancement'].mean():.0f}%")
-    c3.metric("Début", len(df_f[df_f["Statut"]=="Début"]))
+    c1.metric(
+        "Projets",
+        len(df_f)
+    )
 
+    c2.metric(
+        "Avancement moyen",
+        f"{df_f['Avancement'].mean():.0f}%"
+    )
+
+    c3.metric(
+        "Projets début",
+        len(df_f[df_f["Statut"] == "Début"])
+    )
+
+    # =========================
     # GRAPHIQUES
-    st.plotly_chart(px.pie(df_f, names="Statut"), use_container_width=True)
+    # =========================
+    st.subheader("Graphiques")
 
+    fig = px.pie(
+        df_f,
+        names="Statut"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+    # =========================
     # TABLEAU
-    st.dataframe(df_f, use_container_width=True)
+    # =========================
+    st.subheader("Tableau structuré")
+
+    st.dataframe(
+        df_f,
+        use_container_width=True
+    )
 
     # =========================
-    # MAIL PRO
+    # TABLEAU MAIL
     # =========================
-    st.subheader("📧 Mail prêt à envoyer")
+    st.subheader("Mail prêt à envoyer")
 
-    html_table = generate_html(df_f)
-
-    st.markdown("### ✉️ 1. Ouvre Outlook")
     st.markdown("""
     <a href="https://outlook.office.com/mail/deeplink/compose" target="_blank">
-        <button style="background:#0A2463;color:white;padding:10px;border:none;border-radius:5px">
+        <button style="
+            background:#0A2463;
+            color:white;
+            border:none;
+            padding:10px 16px;
+            border-radius:5px;
+            cursor:pointer;
+        ">
         Ouvrir Outlook
         </button>
     </a>
     """, unsafe_allow_html=True)
 
-    st.markdown("### 📋 2. Copie le tableau ci-dessous et colle-le dans ton mail")
+    st.markdown("""
+    Copier le tableau ci-dessous puis coller directement dans Outlook.
+    """)
 
-    st.markdown(html_table, unsafe_allow_html=True)
+    html_table = generate_html(df_f)
+
+    st.markdown(
+        html_table,
+        unsafe_allow_html=True
+    )

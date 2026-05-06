@@ -212,7 +212,7 @@ def generate_html(df):
             background:#0A2463;
         ">
             <span style="
-                color:#F4A300;
+                color:#F4A300 !important;
                 font-weight:bold;
                 font-size:16px;
                 font-family:Calibri;

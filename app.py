@@ -15,6 +15,7 @@ def detect_columns(df):
     mapping = {
         "projet": None,
         "responsable": None,
+        "equipe": None,
         "avancement": None,
         "description": None
     }
@@ -33,6 +34,16 @@ def detect_columns(df):
 
         elif "attribué" in c and mapping["responsable"] is None:
             mapping["responsable"] = col
+
+        # EQUIPE / INTERVENANTS
+        elif (
+            "intervenant" in c
+            or "équipe" in c
+            or "equipe" in c
+            or "participant" in c
+            or "collaborateur" in c
+        ):
+            mapping["equipe"] = col
 
         # AVANCEMENT
         elif "progress" in c:
@@ -86,6 +97,7 @@ def parse_description(txt):
     # DESCRIPTION
     try:
         if "Descriptif :" in txt:
+
             desc = txt.split("Descriptif :", 1)[1]
 
             stop_words = [
@@ -150,7 +162,6 @@ def clean_responsable(x):
 
     x = clean_text(x)
 
-    # LISTE MULTIPLE
     if ";" in x:
         x = x.split(";")[0]
 
@@ -163,6 +174,22 @@ def clean_responsable(x):
         return "Non défini"
 
     return x
+
+
+# =========================
+# EQUIPE
+# =========================
+def clean_equipe(x):
+
+    if pd.isna(x):
+        return ""
+
+    x = clean_text(x)
+
+    x = x.replace(";", ", ")
+    x = x.replace("|", ", ")
+
+    return x.strip()
 
 
 # =========================
@@ -203,25 +230,22 @@ def generate_html(df):
     """
 
     for col in df.columns:
-    
+
         html += f"""
         <th style="
             border:1px solid #d9d9d9;
             padding:14px 10px;
             text-align:center;
             background:#0A2463;
+            color:#F4A300;
+            font-weight:bold;
+            font-size:16px;
+            font-family:Calibri;
         ">
-            <span style="
-                color:#F4A300 !important;
-                font-weight:bold;
-                font-size:16px;
-                font-family:Calibri;
-            ">
-                {col}
-            </span>
+            {col}
         </th>
         """
-    
+
     html += "</tr>"
 
     # LIGNES
@@ -336,6 +360,17 @@ if file:
     else:
         df["Responsable"] = "Non défini"
 
+    # EQUIPE
+    if mapping["equipe"]:
+
+        df["Équipe projet"] = (
+            df_raw[mapping["equipe"]]
+            .apply(clean_equipe)
+        )
+
+    else:
+        df["Équipe projet"] = ""
+
     # AVANCEMENT
     if mapping["avancement"]:
 
@@ -424,6 +459,19 @@ if file:
         df["Avancement"]
         .apply(statut)
     )
+
+    # ORDRE COLONNES
+    df = df[
+        [
+            "Projet",
+            "Responsable",
+            "Équipe projet",
+            "Avancement",
+            "Description",
+            "Remarques",
+            "Statut"
+        ]
+    ]
 
     # =========================
     # FILTRES
@@ -538,8 +586,8 @@ if file:
 
     html_table = generate_html(df_f)
 
-    st.components.v1.html(
-    html_table,
-    height=1200,
-    scrolling=True
-)
+    components.html(
+        html_table,
+        height=1200,
+        scrolling=True
+    )

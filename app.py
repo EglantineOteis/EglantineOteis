@@ -271,15 +271,17 @@ def generate_html(df):
 
             val = clean_text(row[col])
 
-            # AVANCEMENT
+            # AVANCEMENT COLORÉ
             if col == "Avancement":
-
+            
                 color = "#d62828"
-
-                if row["Statut"] == "Milieu":
+            
+                phase = str(row["Phase en cours"])
+            
+                if phase in ["ACT", "PRO", "EXE"]:
                     color = "#f77f00"
-
-                elif row["Statut"] == "Fin":
+            
+                elif phase in ["DET", "AOR", "Terminée"]:
                     color = "#2a9d8f"
 
                 html += f"""

@@ -182,49 +182,59 @@ def clean_responsable(x):
     return x
 
 # =========================
-# PHASE EN COURS
+# PHASE EN COURS DYNAMIQUE
 # =========================
-
-PHASES = [
-    "ESQ",
-    "APS",
-    "APD",
-    "ACT",
-    "PRO",
-    "EXE",
-    "DET",
-    "AOR"
-]
-
-def get_phase_en_cours(done, total):
+def get_phase_en_cours(done_value, phases_value):
 
     try:
 
+        # ex : 5/6
+        done = str(done_value).split("/")[0]
         done = int(done)
 
     except:
-        done = 0
-
-    try:
-
-        total = int(total)
-
-    except:
-        total = 0
-
-    # aucune donnée
-    if total == 0:
         return "Non définie"
 
+    phases_text = clean_text(phases_value)
+
+    if phases_text == "":
+        return "Non définie"
+
+    # séparation ;
+    phases = [
+        p.strip()
+        for p in phases_text.split(";")
+        if p.strip() != ""
+    ]
+
+    clean_phases = []
+
+    for p in phases:
+
+        # suppression dates
+        p = re.sub(
+            r"\d{2}/\d{2}/\d{4}",
+            "",
+            p
+        )
+
+        p = clean_text(p)
+
+        clean_phases.append(p)
+
+    # IMPORTANT
+    # le tableau est inversé :
+    # PRO est souvent au début
+    clean_phases.reverse()
+
     # sécurité
-    if done >= len(PHASES):
+    if done >= len(clean_phases):
         return "Terminée"
 
-    # phase actuelle
-    return PHASES[done]
+    return clean_phases[done]
 
 # =========================
-# TABLEAU HTML
+# TABLE HTML
 # =========================
 def generate_html(df):
 
@@ -273,14 +283,14 @@ def generate_html(df):
 
             # AVANCEMENT COLORÉ
             if col == "Avancement":
-            
+
                 color = "#d62828"
-            
+
                 phase = str(row["Phase en cours"])
-            
+
                 if phase in ["ACT", "PRO", "EXE"]:
                     color = "#f77f00"
-            
+
                 elif phase in ["DET", "AOR", "Terminée"]:
                     color = "#2a9d8f"
 
@@ -407,14 +417,17 @@ if file:
     # =========================
     # PHASE EN COURS
     # =========================
-    
-    df["Phase en cours"] = df.apply(
-        lambda row: get_phase_en_cours(
-            row.get("éléments de la liste de contrôle effectués", 0),
-            row.get("éléments de la liste de contrôle", 0)
-        ),
-        axis=1
-    )
+
+    # colonne O
+    done_column = df_raw.iloc[:, 14]
+
+    # colonne P
+    phases_column = df_raw.iloc[:, 15]
+
+    df["Phase en cours"] = [
+        get_phase_en_cours(done, phases)
+        for done, phases in zip(done_column, phases_column)
+    ]
 
     # =========================
     # NETTOYAGE
@@ -495,10 +508,10 @@ if file:
             "Projet",
             "Responsable",
             "Avancement",
+            "Phase en cours",
             "Description",
             "Remarques",
-            "Équipe projet",
-            "Phase en cours"
+            "Équipe projet"
         ]
     ]
 
@@ -521,9 +534,6 @@ if file:
 
     html_table = generate_html(df_f)
 
-    # =========================
-    # COPIE HTML
-    # =========================
     copy_html = f"""
     <button onclick="
     navigator.clipboard.write([
@@ -564,37 +574,31 @@ if file:
     # GRAPHIQUES
     # =========================
     st.subheader("Graphiques")
-    
-    # =========================
-    # GRAPHIQUES
-    # =========================
-    st.subheader("Graphiques")
-    
+
+    # CAMEMBERT PHASE
     fig_phase = px.pie(
         df_f,
         names="Phase en cours",
         title="Répartition des projets par phase"
     )
-    
+
     st.plotly_chart(
         fig_phase,
         use_container_width=True
     )
-    
-    # -------------------------
-    # GRAPHIQUE RESPONSABLE
-    # -------------------------
+
+    # RESPONSABLE
     df_resp = (
         df_f["Responsable"]
         .value_counts()
         .reset_index()
     )
-    
+
     df_resp.columns = [
         "Responsable",
         "Nombre"
     ]
-    
+
     fig_resp = px.bar(
         df_resp,
         x="Responsable",
@@ -602,12 +606,12 @@ if file:
         title="Répartition des projets par responsable",
         text="Nombre"
     )
-    
+
     fig_resp.update_layout(
         xaxis_title="Responsable",
         yaxis_title="Nombre de projets"
     )
-    
+
     st.plotly_chart(
         fig_resp,
         use_container_width=True

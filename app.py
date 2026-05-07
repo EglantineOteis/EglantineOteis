@@ -182,17 +182,46 @@ def clean_responsable(x):
     return x
 
 # =========================
-# STATUT
+# PHASE EN COURS
 # =========================
-def statut(x):
 
-    if x <= 30:
-        return "Début"
+PHASES = [
+    "ESQ",
+    "APS",
+    "APD",
+    "ACT",
+    "PRO",
+    "EXE",
+    "DET",
+    "AOR"
+]
 
-    elif x <= 70:
-        return "Milieu"
+def get_phase_en_cours(done, total):
 
-    return "Fin"
+    try:
+
+        done = int(done)
+
+    except:
+        done = 0
+
+    try:
+
+        total = int(total)
+
+    except:
+        total = 0
+
+    # aucune donnée
+    if total == 0:
+        return "Non définie"
+
+    # sécurité
+    if done >= len(PHASES):
+        return "Terminée"
+
+    # phase actuelle
+    return PHASES[done]
 
 # =========================
 # TABLEAU HTML
@@ -373,10 +402,16 @@ if file:
         .round(0)
     )
 
-    # STATUT
-    df["Statut"] = (
-        df["Avancement"]
-        .apply(statut)
+    # =========================
+    # PHASE EN COURS
+    # =========================
+    
+    df["Phase en cours"] = df.apply(
+        lambda row: get_phase_en_cours(
+            row.get("éléments de la liste de contrôle effectués", 0),
+            row.get("éléments de la liste de contrôle", 0)
+        ),
+        axis=1
     )
 
     # =========================
@@ -461,7 +496,7 @@ if file:
             "Description",
             "Remarques",
             "Équipe projet",
-            "Statut"
+            "Phase en cours"
         ]
     ]
 
@@ -528,17 +563,19 @@ if file:
     # =========================
     st.subheader("Graphiques")
     
-    # -------------------------
-    # GRAPHIQUE STATUT
-    # -------------------------
-    fig_statut = px.pie(
+    # =========================
+    # GRAPHIQUES
+    # =========================
+    st.subheader("Graphiques")
+    
+    fig_phase = px.pie(
         df_f,
-        names="Statut",
-        title="Répartition des projets par statut"
+        names="Phase en cours",
+        title="Répartition des projets par phase"
     )
     
     st.plotly_chart(
-        fig_statut,
+        fig_phase,
         use_container_width=True
     )
     

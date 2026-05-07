@@ -123,7 +123,7 @@ def parse_description(txt):
     except:
         pass
 
-    # EQUIPE
+    # EQUIPE PROJET
     try:
 
         if "Liste des intervenant :" in txt:
@@ -219,7 +219,6 @@ def get_phase_en_cours(done_value, phases_value):
 
         clean_phases.append(p)
 
-    # inversion logique
     clean_phases.reverse()
 
     if done >= len(clean_phases):
@@ -278,11 +277,16 @@ def generate_html(df):
             else:
                 val = clean_text(row[col])
 
+            # =========================
             # AVANCEMENT
+            # =========================
             if col == "Avancement":
 
-                # VIDE
-                if val == "" or val == "nan":
+                if (
+                    val == ""
+                    or val.lower() == "nan"
+                    or val.lower() == "none"
+                ):
 
                     affichage = ""
                     color = "#6c757d"
@@ -295,7 +299,7 @@ def generate_html(df):
 
                         affichage = f"{av:.0f}%"
 
-                        # COULEUR
+                        # COULEURS SELON AVANCEMENT
                         if av <= 30:
                             color = "#d62828"
 
@@ -378,7 +382,7 @@ if file:
 
     else:
 
-        df["Compartiment"] = ""
+        df["Compartiment"] = "Non défini"
 
     # PROJET
     df["Projet"] = (
@@ -397,7 +401,7 @@ if file:
 
     else:
 
-        df["Responsable"] = ""
+        df["Responsable"] = "Non défini"
 
     # DESCRIPTION
     if mapping["description"]:
@@ -419,9 +423,13 @@ if file:
         df["Remarques"] = ""
         df["Équipe projet"] = ""
 
-        avancement_desc = None
+        avancement_desc = pd.Series(
+            [pd.NA] * len(df_raw)
+        )
 
+    # =========================
     # AVANCEMENT
+    # =========================
     if mapping["avancement"]:
 
         df["Avancement"] = pd.to_numeric(
@@ -436,35 +444,29 @@ if file:
         )
 
     # récupération depuis description
-    if avancement_desc is not None:
+    df["Avancement"] = (
+        df["Avancement"]
+        .fillna(avancement_desc)
+    )
 
-        df["Avancement"] = (
-            df["Avancement"]
-            .fillna(avancement_desc)
-        )
-
-    # garder vide si aucune donnée
-    df["Avancement"] = df["Avancement"].where(
-        pd.notna(df["Avancement"]),
-        pd.NA
+    # IMPORTANT :
+    # on garde vide si aucune donnée
+    df["Avancement"] = df["Avancement"].apply(
+        lambda x: round(x, 0)
+        if pd.notna(x)
+        else pd.NA
     )
 
     # =========================
     # PHASE EN COURS
     # =========================
-    try:
+    done_column = df_raw.iloc[:, 14]
+    phases_column = df_raw.iloc[:, 15]
 
-        done_column = df_raw.iloc[:, 14]
-        phases_column = df_raw.iloc[:, 15]
-
-        df["Phase en cours"] = [
-            get_phase_en_cours(done, phases)
-            for done, phases in zip(done_column, phases_column)
-        ]
-
-    except:
-
-        df["Phase en cours"] = "Non définie"
+    df["Phase en cours"] = [
+        get_phase_en_cours(done, phases)
+        for done, phases in zip(done_column, phases_column)
+    ]
 
     # =========================
     # NETTOYAGE
@@ -532,7 +534,7 @@ if file:
         )
 
     # =========================
-    # FILTRES DF
+    # FILTRE DF
     # =========================
     df_f = df.copy()
 
@@ -555,7 +557,7 @@ if file:
         ]
 
     # =========================
-    # ORGANISATION
+    # ORGANISATION COLONNES
     # =========================
     df_f = df_f[
         [
@@ -630,7 +632,7 @@ if file:
     # =========================
     st.subheader("Graphiques")
 
-    # CAMEMBERT PHASES
+    # CAMEMBERT PHASE
     fig_phase = px.pie(
         df_f,
         names="Phase en cours",
@@ -642,7 +644,7 @@ if file:
         use_container_width=True
     )
 
-    # RESPONSABLES
+    # RESPONSABLE
     df_resp = (
         df_f["Responsable"]
         .value_counts()

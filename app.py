@@ -219,6 +219,7 @@ def get_phase_en_cours(done_value, phases_value):
 
         clean_phases.append(p)
 
+    # IMPORTANT
     clean_phases.reverse()
 
     if done >= len(clean_phases):
@@ -263,7 +264,9 @@ def generate_html(df):
 
     html += "</tr>"
 
+    # =========================
     # LIGNES
+    # =========================
     for i, (_, row) in enumerate(df.iterrows()):
 
         bg = "#ffffff" if i % 2 == 0 else "#f4f6fa"
@@ -272,6 +275,9 @@ def generate_html(df):
 
         for col in df.columns:
 
+            # =========================
+            # VALEUR
+            # =========================
             if pd.isna(row[col]):
                 val = ""
             else:
@@ -282,11 +288,10 @@ def generate_html(df):
             # =========================
             if col == "Avancement":
 
-                if (
-                    val == ""
-                    or val.lower() == "nan"
-                    or val.lower() == "none"
-                ):
+                raw_value = row[col]
+
+                # CASE VIDE
+                if pd.isna(raw_value):
 
                     affichage = ""
                     color = "#6c757d"
@@ -295,17 +300,23 @@ def generate_html(df):
 
                     try:
 
-                        av = float(val)
+                        av = float(raw_value)
 
                         affichage = f"{av:.0f}%"
 
+                        # =========================
                         # COULEURS SELON AVANCEMENT
+                        # =========================
+
+                        # 0 -> 30
                         if av <= 30:
                             color = "#d62828"
 
+                        # 31 -> 70
                         elif av <= 70:
                             color = "#f77f00"
 
+                        # > 70
                         else:
                             color = "#2a9d8f"
 
@@ -326,6 +337,9 @@ def generate_html(df):
                 </td>
                 """
 
+            # =========================
+            # AUTRES COLONNES
+            # =========================
             else:
 
                 html += f"""
@@ -403,7 +417,9 @@ if file:
 
         df["Responsable"] = "Non défini"
 
+    # =========================
     # DESCRIPTION
+    # =========================
     if mapping["description"]:
 
         parsed = (
@@ -443,14 +459,13 @@ if file:
             [pd.NA] * len(df_raw)
         )
 
-    # récupération depuis description
+    # récupération description
     df["Avancement"] = (
         df["Avancement"]
         .fillna(avancement_desc)
     )
 
-    # IMPORTANT :
-    # on garde vide si aucune donnée
+    # garder vide si pas de donnée
     df["Avancement"] = df["Avancement"].apply(
         lambda x: round(x, 0)
         if pd.notna(x)

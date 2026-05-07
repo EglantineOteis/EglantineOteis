@@ -123,7 +123,7 @@ def parse_description(txt):
     except:
         pass
 
-    # EQUIPE PROJET
+    # EQUIPE
     try:
 
         if "Liste des intervenant :" in txt:
@@ -182,13 +182,12 @@ def clean_responsable(x):
     return x
 
 # =========================
-# PHASE EN COURS DYNAMIQUE
+# PHASE EN COURS
 # =========================
 def get_phase_en_cours(done_value, phases_value):
 
     try:
 
-        # ex : 5/6
         done = str(done_value).split("/")[0]
         done = int(done)
 
@@ -200,7 +199,6 @@ def get_phase_en_cours(done_value, phases_value):
     if phases_text == "":
         return "Non définie"
 
-    # séparation ;
     phases = [
         p.strip()
         for p in phases_text.split(";")
@@ -211,7 +209,6 @@ def get_phase_en_cours(done_value, phases_value):
 
     for p in phases:
 
-        # suppression dates
         p = re.sub(
             r"\d{2}/\d{2}/\d{4}",
             "",
@@ -223,11 +220,8 @@ def get_phase_en_cours(done_value, phases_value):
         clean_phases.append(p)
 
     # IMPORTANT
-    # le tableau est inversé :
-    # PRO est souvent au début
     clean_phases.reverse()
 
-    # sécurité
     if done >= len(clean_phases):
         return "Terminée"
 
@@ -279,9 +273,12 @@ def generate_html(df):
 
         for col in df.columns:
 
-            val = clean_text(row[col])
+            if pd.isna(row[col]):
+                val = ""
+            else:
+                val = clean_text(row[col])
 
-            # AVANCEMENT COLORÉ
+            # AVANCEMENT
             if col == "Avancement":
 
                 color = "#d62828"
@@ -294,6 +291,12 @@ def generate_html(df):
                 elif phase in ["DET", "AOR", "Terminée"]:
                     color = "#2a9d8f"
 
+                affichage = (
+                    f"{val}%"
+                    if val != ""
+                    else ""
+                )
+
                 html += f"""
                 <td style="
                     border:1px solid #d9d9d9;
@@ -302,7 +305,7 @@ def generate_html(df):
                     color:{color};
                     font-weight:bold;
                 ">
-                {val}%
+                {affichage}
                 </td>
                 """
 
@@ -362,7 +365,7 @@ if file:
 
     else:
 
-        df["Compartiment"] = "Non défini"
+        df["Compartiment"] = ""
 
     # PROJET
     df["Projet"] = (
@@ -381,17 +384,29 @@ if file:
 
     else:
 
-        df["Responsable"] = "Non défini"
+        df["Responsable"] = ""
 
     # DESCRIPTION
-    parsed = (
-        df_raw[mapping["description"]]
-        .apply(parse_description)
-    )
+    if mapping["description"]:
 
-    df["Description"] = parsed.apply(lambda x: x[0])
-    df["Remarques"] = parsed.apply(lambda x: x[1])
-    df["Équipe projet"] = parsed.apply(lambda x: x[2])
+        parsed = (
+            df_raw[mapping["description"]]
+            .apply(parse_description)
+        )
+
+        df["Description"] = parsed.apply(lambda x: x[0])
+        df["Remarques"] = parsed.apply(lambda x: x[1])
+        df["Équipe projet"] = parsed.apply(lambda x: x[2])
+
+        avancement_desc = parsed.apply(lambda x: x[3])
+
+    else:
+
+        df["Description"] = ""
+        df["Remarques"] = ""
+        df["Équipe projet"] = ""
+
+        avancement_desc = None
 
     # AVANCEMENT
     if mapping["avancement"]:
@@ -405,29 +420,29 @@ if file:
 
         df["Avancement"] = None
 
-    avancement_desc = parsed.apply(lambda x: x[3])
+    if avancement_desc is not None:
 
-    df["Avancement"] = (
-        df["Avancement"]
-        .fillna(avancement_desc)
-        .fillna(0)
-        .round(0)
-    )
+        df["Avancement"] = (
+            df["Avancement"]
+            .fillna(avancement_desc)
+        )
 
     # =========================
     # PHASE EN COURS
     # =========================
+    try:
 
-    # colonne O
-    done_column = df_raw.iloc[:, 14]
+        done_column = df_raw.iloc[:, 14]
+        phases_column = df_raw.iloc[:, 15]
 
-    # colonne P
-    phases_column = df_raw.iloc[:, 15]
+        df["Phase en cours"] = [
+            get_phase_en_cours(done, phases)
+            for done, phases in zip(done_column, phases_column)
+        ]
 
-    df["Phase en cours"] = [
-        get_phase_en_cours(done, phases)
-        for done, phases in zip(done_column, phases_column)
-    ]
+    except:
+
+        df["Phase en cours"] = "Non définie"
 
     # =========================
     # NETTOYAGE
@@ -457,9 +472,9 @@ if file:
     # FILTRES
     # =========================
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
-    
+
         compartiment = st.selectbox(
             "Compartiment",
             ["Tous"] + sorted(
@@ -469,9 +484,9 @@ if file:
                 .tolist()
             )
         )
-    
+
     with col2:
-    
+
         resp = st.selectbox(
             "Responsable",
             ["Tous"] + sorted(
@@ -481,9 +496,9 @@ if file:
                 .tolist()
             )
         )
-    
+
     with col3:
-    
+
         phase = st.selectbox(
             "Phase en cours",
             ["Toutes"] + sorted(
@@ -495,7 +510,7 @@ if file:
         )
 
     # =========================
-    # FILTRE DF
+    # FILTRES DF
     # =========================
     df_f = df.copy()
 
@@ -510,15 +525,15 @@ if file:
         df_f = df_f[
             df_f["Responsable"] == resp
         ]
-    
+
     if phase != "Toutes":
-    
+
         df_f = df_f[
             df_f["Phase en cours"] == phase
         ]
 
     # =========================
-    # ORGANISATION COLONNES
+    # ORGANISATION
     # =========================
     df_f = df_f[
         [
@@ -593,7 +608,7 @@ if file:
     # =========================
     st.subheader("Graphiques")
 
-    # CAMEMBERT PHASE
+    # PHASES
     fig_phase = px.pie(
         df_f,
         names="Phase en cours",
@@ -605,7 +620,7 @@ if file:
         use_container_width=True
     )
 
-    # RESPONSABLE
+    # RESPONSABLES
     df_resp = (
         df_f["Responsable"]
         .value_counts()

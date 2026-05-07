@@ -456,10 +456,10 @@ if file:
     # =========================
     # FILTRES
     # =========================
-    col1, col2 = st.columns(2)
-
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
-
+    
         compartiment = st.selectbox(
             "Compartiment",
             ["Tous"] + sorted(
@@ -469,13 +469,25 @@ if file:
                 .tolist()
             )
         )
-
+    
     with col2:
-
+    
         resp = st.selectbox(
             "Responsable",
             ["Tous"] + sorted(
                 df["Responsable"]
+                .dropna()
+                .unique()
+                .tolist()
+            )
+        )
+    
+    with col3:
+    
+        phase = st.selectbox(
+            "Phase en cours",
+            ["Toutes"] + sorted(
+                df["Phase en cours"]
                 .dropna()
                 .unique()
                 .tolist()
@@ -497,6 +509,12 @@ if file:
 
         df_f = df_f[
             df_f["Responsable"] == resp
+        ]
+    
+    if phase != "Toutes":
+    
+        df_f = df_f[
+            df_f["Phase en cours"] == phase
         ]
 
     # =========================

@@ -281,27 +281,34 @@ def generate_html(df):
             # AVANCEMENT
             if col == "Avancement":
 
-                # COULEUR SELON AVANCEMENT
-                color = "#6c757d"
-
-                try:
-
-                    av = float(val)
-
-                    if av <= 30:
-                        color = "#d62828"
-
-                    elif av <= 70:
-                        color = "#f77f00"
-
-                    else:
-                        color = "#2a9d8f"
-
-                    affichage = f"{av:.0f}%"
-
-                except:
+                # VIDE
+                if val == "" or val == "nan":
 
                     affichage = ""
+                    color = "#6c757d"
+
+                else:
+
+                    try:
+
+                        av = float(val)
+
+                        affichage = f"{av:.0f}%"
+
+                        # COULEUR
+                        if av <= 30:
+                            color = "#d62828"
+
+                        elif av <= 70:
+                            color = "#f77f00"
+
+                        else:
+                            color = "#2a9d8f"
+
+                    except:
+
+                        affichage = ""
+                        color = "#6c757d"
 
                 html += f"""
                 <td style="
@@ -424,8 +431,11 @@ if file:
 
     else:
 
-        df["Avancement"] = None
+        df["Avancement"] = pd.Series(
+            [pd.NA] * len(df_raw)
+        )
 
+    # récupération depuis description
     if avancement_desc is not None:
 
         df["Avancement"] = (
@@ -433,8 +443,11 @@ if file:
             .fillna(avancement_desc)
         )
 
-    # PAS DE 0 PAR DEFAUT
-    df["Avancement"] = df["Avancement"].replace(0, pd.NA)
+    # garder vide si aucune donnée
+    df["Avancement"] = df["Avancement"].where(
+        pd.notna(df["Avancement"]),
+        pd.NA
+    )
 
     # =========================
     # PHASE EN COURS
